@@ -190,3 +190,61 @@ All specialist agents follow a consistent pattern:
 
 ---
 
+## 2026-02-08 - US-026: Create Orthanc DICOM integration client
+
+**What was implemented:**
+- Created `backend/integrations/dicom_client.py` with full `DicomClient` class
+- Implemented 4 core methods for Orthanc DICOM REST API operations:
+  1. `upload_study(dicom_bytes)` - Uploads DICOM file to Orthanc via POST /instances, returns instance ID
+  2. `get_study(study_id)` - Retrieves study metadata including patient info, study date, modality, series, and instances
+  3. `get_image(instance_id)` - Retrieves rendered PNG preview from GET /instances/{id}/preview and converts to PIL.Image for model inference
+  4. `list_studies(patient_id)` - Lists all studies for a patient by querying patient metadata and fetching each study's details
+- All methods use `httpx.AsyncClient` with 30s timeout for async HTTP requests
+- Integrated DICOM client into backend/main.py startup/shutdown lifecycle
+- Added exports to backend/integrations/__init__.py
+
+**Files changed:**
+- `backend/integrations/dicom_client.py` (new, 436 lines)
+- `backend/integrations/__init__.py` (added DICOM exports)
+- `backend/main.py` (added DICOM client initialization and shutdown)
+
+**Learnings:**
+- **Pattern: Orthanc REST API Structure** - Orthanc uses a hierarchical resource structure:
+  - `/patients/{id}` returns patient metadata with list of study IDs in `Studies` array
+  - `/studies/{id}` returns study metadata with `MainDicomTags` (study-level) and `PatientMainDicomTags` (patient demographics)
+  - `/instances/{id}/preview` returns PNG preview image (not raw DICOM), perfect for model input
+  - POST `/instances` accepts raw DICOM bytes with `Content-Type: application/dicom`, returns JSON with instance `ID`
+
+- **Pattern: PIL.Image from HTTP Response** - Converting image bytes to PIL.Image for model inference:
+  ```python
+  image_bytes = response.content
+  image = Image.open(io.BytesIO(image_bytes))
+  ```
+  This pattern allows models like MedImageInsight to directly consume images from Orthanc.
+
+- **Pattern: DICOM Upload Error Handling** - Unlike retrieval methods that return error dicts, `upload_study` raises exceptions on failure:
+  - Validates input is non-empty before attempting upload
+  - Propagates `HTTPStatusError` and `RequestError` to caller for proper error handling
+  - This matches the "fail fast" pattern for write operations vs. "graceful degradation" for reads
+
+- **Gotcha: Orthanc Metadata Structure** - Orthanc uses nested DICOM tag structures:
+  - Study-level tags in `MainDicomTags` (StudyDate, StudyDescription, Modality)
+  - Patient-level tags in `PatientMainDicomTags` (PatientName, PatientID)
+  - Must access correct dict for each metadata field
+  - Series and Instances returned as arrays of IDs, not full resources
+
+- **Gotcha: Patient Name Format** - DICOM PatientName uses caret-separated format (`DOE^JOHN`), not space-separated. Leave as-is for agents to parse if needed, don't auto-convert.
+
+- **Design Choice: httpx Over requests** - Consistent with other integration clients (FHIR, RxNorm, DrugBank, PubMed), using `httpx.AsyncClient` for:
+  - Async compatibility with FastAPI
+  - Consistent timeout handling (30s)
+  - Future support for concurrent uploads/retrievals
+
+- **Design Choice: PNG Preview vs Raw DICOM** - Using `/instances/{id}/preview` endpoint instead of raw DICOM retrieval:
+  - Returns PNG image that PIL.Image can directly consume
+  - No need for complex DICOM parsing libraries (pydicom)
+  - Sufficient for model inference (MedImageInsight, MedGemma)
+  - Simplifies the integration and reduces dependencies
+
+---
+

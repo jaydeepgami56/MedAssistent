@@ -25,6 +25,7 @@ from backend.integrations.rxnorm_client import init_rxnorm, close_rxnorm
 from backend.integrations.drugbank_client import init_drugbank, close_drugbank
 from backend.integrations.pubmed_client import init_pubmed, close_pubmed
 from backend.integrations.fhir_client import init_fhir, close_fhir
+from backend.integrations.dicom_client import init_dicom, close_dicom
 
 
 @asynccontextmanager
@@ -71,11 +72,12 @@ async def lifespan(app: FastAPI):
     else:
         print("   WARNING: ANTHROPIC_API_KEY not set - Radiology Agent will not be available")
 
-    # Initialize RxNorm, DrugBank, PubMed, and FHIR clients
+    # Initialize RxNorm, DrugBank, PubMed, FHIR, and DICOM clients
     await init_rxnorm()
     await init_drugbank()
     await init_pubmed()
     await init_fhir()
+    await init_dicom()
 
     # Initialize Pharmacy Agent
     if settings.ANTHROPIC_API_KEY:
@@ -157,6 +159,7 @@ async def lifespan(app: FastAPI):
     await close_drugbank()
     await close_pubmed()
     await close_fhir()
+    await close_dicom()
 
 
 # Initialize FastAPI app
