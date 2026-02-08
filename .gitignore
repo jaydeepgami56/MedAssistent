@@ -1,0 +1,112 @@
+# API Keys and Secrets - NEVER COMMIT THESE!
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+secrets/
+credentials.json
+
+# OpenClaw local files (may contain sensitive data)
+.openclaw/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.venv/
+venv/
+ENV/
+env/
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+.eslintcache
+.node_repl_history
+
+# IDEs and Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+audit.log
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+pgdata/
+neo4j-data/
+
+# Docker
+docker-compose.override.yml
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Desktop.ini
+
+# Medical/PHI Data - DO NOT COMMIT!
+data/patient/*
+data/imaging/*
+data/phi/*
+*.dcm
+*.dicom
+
+# AI Models (large files - download separately)
+models/
+*.ckpt
+*.pt
+*.pth
+*.safetensors
+*.bin
+
+# Backup files
+*.bak
+*.backup
+*~
+
+# Ralph TUI (keep for project tracking)
+# .ralph-tui/

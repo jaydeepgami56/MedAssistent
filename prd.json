@@ -1,0 +1,600 @@
+{
+  "name": "MedAssist AI MVP",
+  "description": "MVP implementation of MedAssist AI — a multi-agent medical AI platform built on OpenClaw with A2UI. Covers prerequisites, installation, project scaffolding, FastAPI backend, 7 specialist agents + coordinator, AI model wrappers, database setup, SKILL.md files, A2UI JSONL templates, and frontend API integration. Excludes auth, IaC, HIPAA encryption, and production deployment.",
+  "branchName": "ralph/medassist-mvp",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Install system prerequisites",
+      "description": "As a developer, I need all system-level tools installed before any project work can begin. Install Node.js >= 22 (via nvm or official installer, verify with: node --version). Install Python >= 3.10 (verify with: python --version). Install Docker Desktop with Docker Compose (verify with: docker --version && docker compose version). Install Git (verify with: git --version). Install uv Python package manager (pip install uv or via installer, verify with: uv --version). Verify GPU availability if present (nvidia-smi on NVIDIA systems). All tools must be accessible from the terminal/command line.",
+      "acceptanceCriteria": [
+        "node --version returns >= 22.x.x",
+        "python --version returns >= 3.10.x",
+        "docker --version returns a valid version and Docker daemon is running",
+        "docker compose version returns a valid version",
+        "git --version returns a valid version",
+        "uv --version returns a valid version",
+        "All commands are accessible from the system PATH"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "These are manual installation steps. Verify each tool is installed and accessible.",
+      "dependsOn": [],
+      "completionNotes": "Completed by agent"
+    },
+    {
+      "id": "US-002",
+      "title": "Install and configure OpenClaw with LLM providers",
+      "description": "As a developer, I need OpenClaw installed and configured with Claude API so the agent platform is ready. Run: npm install -g openclaw@latest. Run: openclaw onboard --install-daemon. Verify daemon running: openclaw doctor. Create/edit ~/.openclaw/openclaw.json with models config: default provider set to anthropic with model claude-sonnet-4-20250514 and apiKey from ANTHROPIC_API_KEY env var, local provider set to openai-compatible with baseUrl http://127.0.0.1:1234/v1 for LM Studio and contextWindow 32768. Verify config: openclaw health. Verify gateway accessible at ws://127.0.0.1:18789. Verify skills directory exists: ~/.openclaw/workspace/skills/.",
+      "acceptanceCriteria": [
+        "openclaw command is available globally (openclaw --version works)",
+        "openclaw doctor returns healthy status",
+        "~/.openclaw/openclaw.json exists with anthropic provider configured using claude-sonnet-4-20250514",
+        "~/.openclaw/openclaw.json has local provider entry for LM Studio at http://127.0.0.1:1234/v1",
+        "openclaw health returns successful status",
+        "~/.openclaw/workspace/skills/ directory exists",
+        "OpenClaw gateway is reachable at ws://127.0.0.1:18789"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Requires ANTHROPIC_API_KEY. LM Studio local provider is optional for MVP but config entry should exist.",
+      "dependsOn": [
+        "US-001"
+      ],
+      "completionNotes": "Completed by agent"
+    },
+    {
+      "id": "US-003",
+      "title": "Obtain API keys and configure environment secrets",
+      "description": "As a developer, I need all external API keys obtained and stored so the backend can connect to cloud services. Obtain Anthropic API key (sk-ant-...) from console.anthropic.com — required for Claude API used by all agents. Obtain NCBI API key from ncbi.nlm.nih.gov/account — required for PubMed searches by Research Agent (optional for dev, increases rate limit from 3/sec to 10/sec). Note DrugBank API key — required for Pharmacy Agent drug interaction lookups (can use free tier or mock for MVP). Store all keys securely — they will be placed in .env file during project setup (US-004). Do NOT commit keys to git.",
+      "acceptanceCriteria": [
+        "Anthropic API key obtained and verified working (can make a test API call)",
+        "NCBI/PubMed API key obtained from ncbi.nlm.nih.gov account settings",
+        "DrugBank API access confirmed (API key or decision to use mock data for MVP)",
+        "All keys documented in a secure local location (NOT committed to git)",
+        "Keys ready to be placed in .env file in subsequent setup step"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "DrugBank API may require institutional access. For MVP, mock data fallback is acceptable.",
+      "dependsOn": [],
+      "completionNotes": "Completed by agent"
+    },
+    {
+      "id": "US-004",
+      "title": "Scaffold project directory structure and environment config",
+      "description": "As a developer, I need the full project directory structure created and environment configured so all subsequent work has the correct file layout. Create directories: config/, skills/ (with 7 agent subdirs: triage/, radiology/, diagnostic/, pharmacy/, monitoring/, documentation/, research/), a2ui/templates/, a2ui/components/, backend/ (with subdirs: agents/, models/, integrations/, tests/), infrastructure/, docs/. Move existing doc files (01-MedAssist-AI-Architecture.md, 02-A2UI-Templates.md, 03-SKILL-Files.md, 04-Project-Setup.md) into docs/. Create .gitignore with entries: .env, __pycache__/, *.pyc, models/, node_modules/, .venv/, *.egg-info/, .DS_Store. Create .env.example with all required env vars from 04-Project-Setup.md. Copy .env.example to .env and fill in actual API keys obtained in US-003. Initialize git repo if not already: git init && git add -A && git commit -m 'Initial project scaffold'.",
+      "acceptanceCriteria": [
+        "All directories exist: config/, skills/{triage,radiology,diagnostic,pharmacy,monitoring,documentation,research}/, a2ui/templates/, a2ui/components/, backend/{agents,models,integrations,tests}/, infrastructure/, docs/",
+        "Doc files moved to docs/ directory",
+        ".gitignore exists with .env, __pycache__/, *.pyc, models/, node_modules/, .venv/ entries",
+        ".env.example exists with all env vars: ANTHROPIC_API_KEY, CLAUDE_MODEL, MEDIMAGEINSIGHT_MODEL_DIR, QDRANT_HOST, QDRANT_PORT, ORTHANC_HOST, ORTHANC_PORT, FHIR_BASE_URL, RXNORM_API_URL, DRUGBANK_API_KEY, PUBMED_API_KEY, NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD, POSTGRES_HOST, POSTGRES_DB, POSTGRES_USER, POSTGRES_PASSWORD, ENCRYPTION_KEY",
+        ".env exists with actual API keys filled in (not committed to git)",
+        "Git repo initialized with initial commit"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-001",
+        "US-003"
+      ]
+    },
+    {
+      "id": "US-005",
+      "title": "Create all SKILL.md files and skill.json for every agent",
+      "description": "As a developer, I need SKILL.md and skill.json files for all 7 specialist agents so the OpenClaw skill registry is complete. Copy content from docs/03-SKILL-Files.md. Each SKILL.md must include: # Skill Name, ## When to Use (with trigger keywords), ## Process (numbered steps), ## Models Used, ## A2UI Output Format, ## Safety Rules, ## Example (input/output). Each skill.json must have: name, version (1.0), agent fields. Agents: triage (ESI scoring, red flags, ClinicalBERT+Claude), radiology (image analysis, MedImageInsight+MedGemma), diagnostic (differential dx, MedGemma 27B+Claude), pharmacy (drug interactions, RxNorm+DrugBank), monitoring (MEWS scoring, time-series ML), documentation (SOAP notes, Claude API), research (PubMed search, Claude+PubMed API). After creating, copy all skills to OpenClaw workspace: cp -r skills/* ~/.openclaw/workspace/skills/ and verify with: openclaw skills list.",
+      "acceptanceCriteria": [
+        "skills/triage/SKILL.md exists with triage assessment skill definition including ESI 1-5 scoring process and red flag checklist",
+        "skills/radiology/SKILL.md exists with medical image analysis skill including modality-specific zero-shot label sets",
+        "skills/diagnostic/SKILL.md exists with differential diagnosis skill",
+        "skills/pharmacy/SKILL.md exists with drug interaction check skill including severity classification (Critical/Major/Moderate/Minor)",
+        "skills/monitoring/SKILL.md exists with vital sign monitoring skill including MEWS calculation formula",
+        "skills/documentation/SKILL.md exists with clinical documentation skill including SOAP format",
+        "skills/research/SKILL.md exists with clinical evidence skill including PubMed search process",
+        "All 7 skill.json files exist with name, version, and agent fields",
+        "Skills copied to ~/.openclaw/workspace/skills/ and visible via openclaw skills list"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-002",
+        "US-004"
+      ]
+    },
+    {
+      "id": "US-006",
+      "title": "Create all A2UI JSONL templates",
+      "description": "As a developer, I need all 6 A2UI JSONL template files so the agent interfaces can be pushed to OpenClaw Canvas. Copy JSONL content from docs/02-A2UI-Templates.md. Each file must contain surfaceUpdate (component definitions) and beginRendering messages. Templates: triage-dashboard.jsonl (root > header > ESI stats > patient queue > disclaimer), radiology-report.jsonl (split-panel: left=patient+findings+classification, right=evidence+recommendation+actions), drug-alert.jsonl (alert header > drug pair > severity > interaction > evidence > actions), patient-vitals.jsonl (6 vital cards: HR/BP/SpO2/Temp/RR/MEWS > trend > alert > actions), clinical-notes.jsonl (SOAP editable TextFields > ICD-10 codes > finalize/draft/export), evidence-panel.jsonl (search results with title/citation/evidence level/abstract). Test by pushing one template to Canvas: openclaw nodes list to get node-id, then openclaw nodes canvas a2ui push --jsonl a2ui/templates/triage-dashboard.jsonl --node <node-id>.",
+      "acceptanceCriteria": [
+        "a2ui/templates/triage-dashboard.jsonl exists with valid JSONL containing surfaceUpdate and beginRendering",
+        "a2ui/templates/radiology-report.jsonl exists with split-panel layout components",
+        "a2ui/templates/drug-alert.jsonl exists with drug pair display and severity badge components",
+        "a2ui/templates/patient-vitals.jsonl exists with 6 vital sign card components and trend chart",
+        "a2ui/templates/clinical-notes.jsonl exists with SOAP TextField components and ICD-10 codes list",
+        "a2ui/templates/evidence-panel.jsonl exists with research result card components",
+        "All JSONL files are valid JSON lines format (one JSON object per line)",
+        "At least one template successfully pushed to OpenClaw Canvas"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-002",
+        "US-004"
+      ]
+    },
+    {
+      "id": "US-007",
+      "title": "Create Docker Compose and start local development services",
+      "description": "As a developer, I need a docker-compose.yml to run PostgreSQL, Qdrant, Orthanc, and Neo4j locally so the backend can connect to all required data services. Create infrastructure/docker-compose.yml with version 3.9 and services: postgres (image: postgres:16, port 5432, env POSTGRES_DB=medassist POSTGRES_USER=medassist POSTGRES_PASSWORD=dev-password, volume pgdata), qdrant (image: qdrant/qdrant:latest, port 6333, volume qdrant_data), orthanc (image: orthancteam/orthanc:latest, ports 8042 + 4242, volume orthanc_data), neo4j (image: neo4j:5, env NEO4J_AUTH=neo4j/dev-password, ports 7474 + 7687, volume neo4j_data). Define all named volumes at bottom. Start all services: cd infrastructure && docker compose up -d. Verify all containers running: docker compose ps. Verify connectivity: PostgreSQL on localhost:5432, Qdrant on localhost:6333, Orthanc web on localhost:8042, Neo4j browser on localhost:7474.",
+      "acceptanceCriteria": [
+        "infrastructure/docker-compose.yml exists with version 3.9",
+        "PostgreSQL 16 service defined with port 5432, medassist database, and persistent volume",
+        "Qdrant service defined with port 6333 and persistent volume",
+        "Orthanc service defined with ports 8042 and 4242 and persistent volume",
+        "Neo4j 5 service defined with ports 7474 and 7687 and persistent volume",
+        "All named volumes declared: pgdata, qdrant_data, orthanc_data, neo4j_data",
+        "docker compose up -d starts all 4 services without errors",
+        "All services are reachable on their respective ports"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": "Requires Docker Desktop running. First pull may take several minutes.",
+      "dependsOn": [
+        "US-001",
+        "US-004"
+      ]
+    },
+    {
+      "id": "US-008",
+      "title": "Create FastAPI backend with config, dependencies, and health endpoint",
+      "description": "As a developer, I need the FastAPI backend foundation so all agents and endpoints can be built on top. Create backend/requirements.txt with: fastapi, uvicorn[standard], python-dotenv, pydantic, pydantic-settings, httpx, anthropic, qdrant-client, asyncpg, sqlalchemy[asyncio], transformers, torch, Pillow, python-multipart, pytest, pytest-asyncio. Create Python virtual environment: python -m venv .venv && .venv/Scripts/activate (Windows) or source .venv/bin/activate (Unix). Install deps: pip install -r backend/requirements.txt. Create backend/config.py using pydantic-settings BaseSettings to load all env vars from .env (ANTHROPIC_API_KEY, CLAUDE_MODEL defaulting to claude-sonnet-4-20250514, QDRANT_HOST defaulting to localhost, QDRANT_PORT defaulting to 6333, ORTHANC_HOST defaulting to localhost, ORTHANC_PORT defaulting to 8042, FHIR_BASE_URL, RXNORM_API_URL defaulting to https://rxnav.nlm.nih.gov/REST, DRUGBANK_API_KEY, PUBMED_API_KEY, NEO4J_URI defaulting to bolt://localhost:7687, POSTGRES_HOST defaulting to localhost, POSTGRES_DB defaulting to medassist, POSTGRES_USER defaulting to medassist, POSTGRES_PASSWORD). Create backend/main.py with FastAPI app, CORS middleware (allow all origins for dev), GET /health returning {status: ok, agents_online: 7, version: 2.0}. Create __init__.py files in backend/agents/, backend/models/, backend/integrations/, backend/tests/. Verify: cd backend && uvicorn main:app --host 0.0.0.0 --port 8000 and curl http://localhost:8000/health returns 200.",
+      "acceptanceCriteria": [
+        "backend/requirements.txt exists with all listed dependencies including pytest",
+        "Python virtual environment created in .venv/ and dependencies installed",
+        "backend/config.py exists using pydantic-settings BaseSettings loading all env vars with sensible defaults",
+        "backend/main.py exists with FastAPI app, CORS middleware, and GET /health endpoint",
+        "GET /health returns JSON {status: 'ok', agents_online: 7, version: '2.0'}",
+        "backend/agents/__init__.py, backend/models/__init__.py, backend/integrations/__init__.py, backend/tests/__init__.py all exist",
+        "uvicorn starts successfully on port 8000"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": "torch installation may require specific CUDA version for GPU support. CPU-only is fine for MVP.",
+      "dependsOn": [
+        "US-004"
+      ]
+    },
+    {
+      "id": "US-009",
+      "title": "Create BaseAgent abstract class",
+      "description": "As a developer, I need a BaseAgent abstract class that all specialist agents inherit from, providing a consistent interface. Create backend/agents/base_agent.py with abstract class BaseAgent containing: properties (agent_id: str, name: str, status: str default 'Active', skills: list[str], queue: int default 0, models_used: list[str], color: str hex accent color, icon: str emoji). Abstract methods: async execute_skill(skill_name: str, params: dict) -> dict, async chat(message: str, context: dict) -> AsyncIterator[str] for streaming. Concrete methods: get_info() -> dict returning all agent metadata as dict, log_audit(request: str, model: str, confidence: float, action: str) -> None that prints audit entry (placeholder for DB logging later).",
+      "acceptanceCriteria": [
+        "backend/agents/base_agent.py exists with BaseAgent abstract class",
+        "BaseAgent has all required properties: agent_id, name, status, skills, queue, models_used, color, icon",
+        "BaseAgent has abstract methods: execute_skill and chat",
+        "BaseAgent has concrete methods: get_info returning metadata dict, log_audit printing audit entry",
+        "BaseAgent uses ABC from abc module for abstract method enforcement"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-008"
+      ]
+    },
+    {
+      "id": "US-010",
+      "title": "Create PostgreSQL database schema and connection utility",
+      "description": "As a developer, I need the database schema and connection utility so agents can log audits and store results. Create backend/integrations/database.py with: async get_db_pool() using asyncpg to connect to PostgreSQL (host/db/user/password from config). Create async init_db() that creates tables: audit_log (id SERIAL PRIMARY KEY, timestamp TIMESTAMPTZ DEFAULT NOW(), agent_id VARCHAR(50), skill_name VARCHAR(100), request_summary TEXT, model_used VARCHAR(100), confidence FLOAT, clinician_action VARCHAR(50), clinician_id VARCHAR(50), response_time_ms INT), patients (id SERIAL PRIMARY KEY, external_id VARCHAR(100) UNIQUE, name VARCHAR(200), age INT, gender VARCHAR(20), medical_history JSONB, allergies JSONB, medications JSONB, created_at TIMESTAMPTZ DEFAULT NOW()), triage_assessments (id SERIAL PRIMARY KEY, patient_id INT REFERENCES patients, esi_score INT, red_flags JSONB, routing VARCHAR(200), reasoning TEXT, confidence FLOAT, clinician_override BOOLEAN DEFAULT FALSE, created_at TIMESTAMPTZ DEFAULT NOW()), radiology_reports (id SERIAL PRIMARY KEY, patient_id INT REFERENCES patients, modality VARCHAR(100), findings JSONB, similar_cases JSONB, recommendation TEXT, overall_confidence FLOAT, clinician_action VARCHAR(50), created_at TIMESTAMPTZ DEFAULT NOW()). Call init_db() from FastAPI lifespan startup. Verify: start backend with Docker Compose running, check tables created in PostgreSQL.",
+      "acceptanceCriteria": [
+        "backend/integrations/database.py exists with get_db_pool and init_db functions",
+        "All 4 tables defined: audit_log, patients, triage_assessments, radiology_reports with correct column types",
+        "Database connection uses config values from backend/config.py",
+        "init_db is called from FastAPI app lifespan startup event in main.py",
+        "Connection pool is properly created and closed on startup/shutdown",
+        "Tables are created successfully when backend starts with PostgreSQL running"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-007",
+        "US-008"
+      ]
+    },
+    {
+      "id": "US-011",
+      "title": "Create Qdrant vector database client",
+      "description": "As a developer, I need a Qdrant client wrapper so the Radiology Agent can store and search image embeddings. Create backend/integrations/qdrant_client.py with class QdrantService: __init__(host, port) initializing qdrant_client.QdrantClient. Methods: async create_collection(name: str, vector_size: int) creating collection with cosine distance if not exists. async upsert_embedding(collection: str, id: str, vector: list[float], metadata: dict) storing embedding with payload. async search_similar(collection: str, query_vector: list[float], top_k: int = 5) -> list[dict] returning matches with id, score, and payload. Create medical_images collection with vector size matching MedImageInsight embedding dimension (default 512). Initialize QdrantService as singleton from config in main.py startup. Verify: start backend with Docker Compose, confirm collection created in Qdrant.",
+      "acceptanceCriteria": [
+        "backend/integrations/qdrant_client.py exists with QdrantService class",
+        "create_collection method creates collection with cosine distance metric",
+        "upsert_embedding method stores vector with metadata payload",
+        "search_similar method returns top_k results with id, score, and payload",
+        "QdrantService is initialized from config during FastAPI startup",
+        "medical_images collection created on startup when Qdrant is running"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-007",
+        "US-008"
+      ]
+    },
+    {
+      "id": "US-012",
+      "title": "Create ClinicalBERT NER model wrapper",
+      "description": "As a developer, I need a ClinicalBERT wrapper so the Triage Agent can extract medical entities from clinical text. Create backend/models/clinical_bert.py with class ClinicalBERTService: load_model() loading a medical NER model from HuggingFace transformers (use emilyalsentzer/Bio_ClinicalBERT or a medical NER pipeline). Method extract_entities(text: str) -> dict returning: symptoms (list[str]), conditions (list[str]), medications (list[str]), allergies (list[str]), anatomical_locations (list[str]), temporal_indicators (list[str]). If model unavailable, implement fallback using Claude API for entity extraction with a structured prompt. Include error handling for model loading failures.",
+      "acceptanceCriteria": [
+        "backend/models/clinical_bert.py exists with ClinicalBERTService class",
+        "load_model method loads Bio_ClinicalBERT or medical NER model from HuggingFace",
+        "extract_entities method accepts clinical text and returns dict with symptoms, conditions, medications, allergies, anatomical_locations, temporal_indicators",
+        "Fallback to Claude API extraction if model loading fails",
+        "Error handling for model loading and inference failures"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": "First model download may take several minutes. Claude API fallback ensures dev workflow isn't blocked.",
+      "dependsOn": [
+        "US-008"
+      ]
+    },
+    {
+      "id": "US-013",
+      "title": "Create MedImageInsight model wrapper",
+      "description": "As a developer, I need a MedImageInsight wrapper so the Radiology Agent can classify medical images and generate embeddings. Create backend/models/medimageinsight.py with class MedImageInsightService: load_model(model_dir: str) loading MedImageInsight 0.61B from local directory or HuggingFace (lion-ai/MedImageInsights). Methods: classify_image(image: PIL.Image, labels: list[str]) -> list[dict] returning zero-shot classification results as [{label, confidence}] sorted by confidence desc. generate_embedding(image: PIL.Image) -> list[float] returning embedding vector. Define modality label sets as class constants: CHEST_XRAY_LABELS = ['normal', 'pneumonia', 'cardiomegaly', 'pleural effusion', 'atelectasis', 'consolidation', 'pneumothorax', 'fracture', 'mass', 'edema'], BRAIN_MRI_LABELS = ['normal', 'tumor/mass', 'acute stroke', 'hemorrhage', 'cerebral atrophy', 'MS lesion', 'hydrocephalus', 'abscess'], DERMATOLOGY_LABELS = ['benign nevus', 'melanoma', 'basal cell carcinoma', 'squamous cell carcinoma', 'actinic keratosis', 'dermatofibroma', 'vascular lesion']. If model unavailable, return mock classification results for development.",
+      "acceptanceCriteria": [
+        "backend/models/medimageinsight.py exists with MedImageInsightService class",
+        "load_model method loads MedImageInsight from local dir or HuggingFace",
+        "classify_image method returns list of {label, confidence} dicts sorted by confidence",
+        "generate_embedding method returns float vector",
+        "Modality label sets defined as class constants for chest_xray, brain_mri, dermatology",
+        "Fallback mock results available when model is not loaded"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": "Requires GPU for real inference. Mock mode allows development without GPU.",
+      "dependsOn": [
+        "US-008"
+      ]
+    },
+    {
+      "id": "US-014",
+      "title": "Create MedGemma model wrapper",
+      "description": "As a developer, I need a MedGemma wrapper so agents can generate radiology reports and perform clinical reasoning. Create backend/models/medgemma.py with class MedGemmaService: load_4b_model(device: str) loading MedGemma 4B from HuggingFace (Google). Method generate_report(findings: list[dict], modality: str, patient_info: dict) -> str generating structured radiology report narrative from classification findings. Method clinical_reasoning(prompt: str, context: dict) -> str for general clinical reasoning (placeholder for 27B, uses 4B or Claude API fallback). If model unavailable, implement fallback using Claude API with a radiology report generation prompt.",
+      "acceptanceCriteria": [
+        "backend/models/medgemma.py exists with MedGemmaService class",
+        "load_4b_model method loads MedGemma 4B from HuggingFace",
+        "generate_report method accepts findings list, modality, patient info and returns report narrative string",
+        "clinical_reasoning method accepts prompt and context, returns reasoning string",
+        "Fallback to Claude API when model is not available"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": "MedGemma 4B requires ~8GB GPU VRAM. Claude API fallback ensures development without GPU.",
+      "dependsOn": [
+        "US-008"
+      ]
+    },
+    {
+      "id": "US-015",
+      "title": "Implement Triage Agent with ESI scoring",
+      "description": "As a developer, I need the Triage Agent so patients can be assessed with ESI 1-5 scoring, red flag detection, and routing recommendations. Create backend/agents/triage_agent.py with class TriageAgent(BaseAgent): agent_id='triage', name='Triage Agent', icon='🚨', color='#ef4444', skills=['esi_scoring','red_flag_detection','patient_routing','emergency_alert'], models_used=['ClinicalBERT','Claude API']. Implement execute_skill dispatching to skill methods. Implement esi_scoring: accept complaint (str), vitals (dict with hr, bp_sys, bp_dia, spo2, temp, rr), pain_scale (int), duration (str), history (str), allergies (list), medications (list). Use ClinicalBERTService to extract entities. Check red flags: cardiac (chest pain, syncope), respiratory (dyspnea, SpO2<90%), neurological (altered consciousness, stroke/FAST+, GCS<9), trauma (hemorrhage, burns>20% BSA), other (anaphylaxis, qSOFA>=2). If any red flag → minimum ESI-2. Use Claude API (anthropic client) to determine final ESI 1-5 with reasoning chain. Return: esi_score, esi_label, red_flags[], routing, wait_time, reasoning, confidence. Implement chat method using Claude with triage-specific system prompt.",
+      "acceptanceCriteria": [
+        "backend/agents/triage_agent.py exists inheriting from BaseAgent",
+        "esi_scoring skill accepts patient data and returns esi_score (1-5), esi_label, red_flags list, routing recommendation, wait_time estimate, reasoning text, and confidence score",
+        "Red flag detection covers cardiac, respiratory, neurological, trauma, and other categories",
+        "Any detected red flag forces minimum ESI-2",
+        "Claude API called for ESI determination with full clinical context",
+        "chat method provides streaming responses with triage-specific system prompt",
+        "All outputs include disclaimer: 'AI-assisted triage — requires clinician verification'"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-009",
+        "US-012"
+      ]
+    },
+    {
+      "id": "US-016",
+      "title": "Implement Radiology Agent with image analysis pipeline",
+      "description": "As a developer, I need the Radiology Agent so medical images can be analyzed with classification, KNN evidence search, and report generation. Create backend/agents/radiology_agent.py with class RadiologyAgent(BaseAgent): agent_id='radiology', name='Radiology Agent', icon='🩻', color='#00b4d8', skills=['xray_analysis','mri_interpretation','ct_review','report_gen','evidence_search'], models_used=['MedImageInsight','MedGemma 4B','Qdrant']. Implement xray_analysis: accept image (PIL.Image or bytes), patient_info (dict with name, age, gender). Pipeline: MedImageInsightService.classify_image with CHEST_XRAY_LABELS → generate_embedding → QdrantService.upsert_embedding → QdrantService.search_similar for KNN cases → MedGemmaService.generate_report from findings → safety check (flag confidence < 0.7). Return: findings[] (text, confidence, severity:high/moderate/normal), similar_cases[] (id, similarity_score), recommendation, overall_confidence. Implement evidence_search: query Qdrant by embedding. Implement chat method with radiology system prompt.",
+      "acceptanceCriteria": [
+        "backend/agents/radiology_agent.py exists inheriting from BaseAgent",
+        "xray_analysis skill runs full pipeline: classify → embed → KNN search → generate report",
+        "Findings returned with text, confidence score, and severity level (high/moderate/normal)",
+        "Similar cases returned from Qdrant KNN with similarity scores",
+        "Findings with confidence < 0.7 are flagged for mandatory human review",
+        "Report narrative generated by MedGemma (or Claude fallback)",
+        "All outputs include disclaimer: 'AI-assisted analysis — requires radiologist review'"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-009",
+        "US-011",
+        "US-013",
+        "US-014"
+      ]
+    },
+    {
+      "id": "US-017",
+      "title": "Create RxNorm and DrugBank integration clients",
+      "description": "As a developer, I need RxNorm and DrugBank API clients so the Pharmacy Agent can resolve drug names and check interactions. Create backend/integrations/rxnorm_client.py with class RxNormClient: resolve_drug_name(name: str) -> dict calling GET https://rxnav.nlm.nih.gov/REST/rxcui.json?name={name} returning CUI + normalized name. get_interactions(rxcui_list: list[str]) -> list[dict] calling GET /interaction/list.json returning pairwise interactions with severity. Create backend/integrations/drugbank_client.py with class DrugBankClient: search_drug(name: str) -> dict searching DrugBank. get_interactions(drugbank_id: str) -> list[dict] returning known interactions. get_contraindications(drugbank_id: str) -> list[dict]. Both clients use httpx.AsyncClient for async HTTP calls and handle rate limiting and errors gracefully.",
+      "acceptanceCriteria": [
+        "backend/integrations/rxnorm_client.py exists with RxNormClient class",
+        "resolve_drug_name method calls RxNorm REST API and returns CUI + normalized name",
+        "get_interactions method returns pairwise drug interactions from RxNorm",
+        "backend/integrations/drugbank_client.py exists with DrugBankClient class",
+        "Both clients use httpx.AsyncClient for async HTTP",
+        "Error handling for API failures and rate limiting"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-008"
+      ]
+    },
+    {
+      "id": "US-018",
+      "title": "Implement Pharmacy Agent with drug interaction checking",
+      "description": "As a developer, I need the Pharmacy Agent so drug interactions can be checked with severity classification and workflow blocking. Create backend/agents/pharmacy_agent.py with class PharmacyAgent(BaseAgent): agent_id='pharmacy', name='Pharmacy Agent', icon='💊', color='#f59e0b', skills=['drug_interaction','dosage_calc','contraindication','med_reconciliation'], models_used=['Claude API','RxNorm API','DrugBank API']. Implement drug_interaction: accept drug_names (list[str]), patient_id (optional). Resolve each drug to RxNorm CUI via RxNormClient. Query DrugBank for interactions between all pairs. Classify severity: Critical (life-threatening, blocked=true requires physician override), Major (significant risk), Moderate (dose adjustment), Minor (awareness). Return: interactions[] (drug_a, drug_b, severity, description, evidence_source, blocked), alternatives[]. Implement dosage_calc: accept drug, weight, age, renal_function → return dose range. Implement chat with pharmacy system prompt.",
+      "acceptanceCriteria": [
+        "backend/agents/pharmacy_agent.py exists inheriting from BaseAgent",
+        "drug_interaction skill resolves drug names to RxNorm CUIs and checks interactions",
+        "Interactions classified by severity: Critical, Major, Moderate, Minor",
+        "Critical interactions set blocked=true requiring physician override with reason",
+        "Dosage calculation skill accepts patient parameters and returns dose range",
+        "Alternatives suggested for blocked interactions",
+        "All outputs include drug interaction safety disclaimers"
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-009",
+        "US-017"
+      ]
+    },
+    {
+      "id": "US-019",
+      "title": "Implement Monitoring Agent with MEWS scoring",
+      "description": "As a developer, I need the Monitoring Agent so vital signs can be tracked with MEWS early warning scoring and auto-alerts. Create backend/agents/monitoring_agent.py with class MonitoringAgent(BaseAgent): agent_id='monitoring', name='Monitoring Agent', icon='📊', color='#a855f7', skills=['vital_tracking','mews_score','anomaly_detection','alert_gen'], models_used=['Time-series ML','Claude API']. Implement mews_score: accept vitals (hr, bp_sys, spo2, temp, rr). Calculate MEWS per standard: HR(<40 or >130=3, 41-50 or 111-130=2, 51-100=0, 101-110=1), BP sys(<70=3, 71-80=2, 81-100=1, 101-199=0, >200=2), RR(<9=2, 9-14=0, 15-20=1, 21-29=2, >29=3), Temp(<35=2, 35-38.4=0, >38.5=2). Return: mews_total, component_scores, alert_level (Normal 0-2, Increased 3-4, Critical 5+). Implement vital_tracking: store vitals with timestamp, maintain 6-hour window. Implement alert_gen: MEWS>=5 or SpO2<90% triggers immediate critical alert. Implement chat with monitoring system prompt.",
+      "acceptanceCriteria": [
+        "backend/agents/monitoring_agent.py exists inheriting from BaseAgent",
+        "MEWS calculation correctly implements standard scoring for HR, BP, RR, Temp",
+        "Alert levels: Normal (0-2), Increased concern (3-4), Critical (5+)",
+        "SpO2 < 90% triggers immediate critical alert regardless of MEWS score",
+        "Vital tracking stores readings with timestamps for trend analysis",
+        "MEWS >= 5 auto-generates critical alert for attending physician"
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-009"
+      ]
+    },
+    {
+      "id": "US-020",
+      "title": "Implement Documentation Agent with SOAP notes",
+      "description": "As a developer, I need the Documentation Agent so clinical notes can be auto-generated in SOAP format with ICD-10 coding. Create backend/agents/documentation_agent.py with class DocumentationAgent(BaseAgent): agent_id='docs', name='Documentation Agent', icon='📋', color='#06b6d4', skills=['soap_notes','discharge_summary','icd10_coding','referral_letter'], models_used=['Claude API']. Implement soap_notes: accept patient_id, encounter_data (dict with transcript, triage_output, radiology_output, pharmacy_output, monitoring_output). Use Claude API to generate: S (subjective — patient's words, HPI, symptoms), O (objective — vitals, exam, labs, imaging), A (assessment — diagnosis, differentials), P (plan — treatment, meds, follow-up). Auto-suggest ICD-10 codes from Assessment. Return: soap_sections (dict), icd10_codes[] (code, description, confidence), draft_status='pending_review'. Implement discharge_summary and icd10_coding skills. Chat with documentation system prompt.",
+      "acceptanceCriteria": [
+        "backend/agents/documentation_agent.py exists inheriting from BaseAgent",
+        "SOAP notes skill generates all 4 sections (S, O, A, P) from encounter data using Claude API",
+        "ICD-10 codes auto-suggested from Assessment section",
+        "All notes returned as draft_status='pending_review' requiring clinician approval",
+        "Discharge summary skill generates formatted summary from encounter history",
+        "All outputs include disclaimer: 'Auto-generated — review and edit before finalizing'"
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-009"
+      ]
+    },
+    {
+      "id": "US-021",
+      "title": "Create PubMed integration client",
+      "description": "As a developer, I need a PubMed API client so the Research Agent can search medical literature. Create backend/integrations/pubmed_client.py with class PubMedClient: search(query: str, max_results: int = 10, min_date: str = None) -> list[dict] calling NCBI E-utilities: esearch.fcgi to get PMIDs, then efetch.fcgi to get article metadata. Return list of dicts with: pmid, title, authors (list[str]), journal, year, abstract, publication_type. Method fetch_abstracts(pmids: list[str]) -> list[dict] fetching full abstracts for a list of PMIDs. Method format_citation(article: dict) -> str formatting as standard citation string. Use httpx.AsyncClient. Handle NCBI rate limiting (max 3 requests/sec without API key, 10/sec with key).",
+      "acceptanceCriteria": [
+        "backend/integrations/pubmed_client.py exists with PubMedClient class",
+        "search method calls NCBI esearch + efetch and returns article metadata",
+        "Results include pmid, title, authors, journal, year, abstract, publication_type",
+        "fetch_abstracts method retrieves full abstracts for given PMIDs",
+        "format_citation method produces standard citation string",
+        "Rate limiting handled (respects NCBI API limits)"
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-008"
+      ]
+    },
+    {
+      "id": "US-022",
+      "title": "Implement Research Agent with PubMed search and evidence synthesis",
+      "description": "As a developer, I need the Research Agent so clinicians can search medical literature and get synthesized evidence. Create backend/agents/research_agent.py with class ResearchAgent(BaseAgent): agent_id='research', name='Research Agent', icon='📚', color='#10b981', skills=['guideline_search','evidence_synthesis','trial_match','literature_review'], models_used=['Claude API','PubMed API']. Implement guideline_search: accept clinical_question (str). Use Claude to formulate optimal PubMed search query. Search via PubMedClient. Filter by recency and evidence level (meta-analysis > RCT > cohort > case). Return: results[] (title, authors, journal, year, pmid, abstract, evidence_level), search_query_used. Implement evidence_synthesis: use Claude to synthesize findings from multiple PubMed results into concise summary with citations. Implement trial_match: placeholder for ClinicalTrials.gov search. Chat with research system prompt.",
+      "acceptanceCriteria": [
+        "backend/agents/research_agent.py exists inheriting from BaseAgent",
+        "guideline_search skill formulates PubMed query using Claude, searches, and returns results with evidence levels",
+        "evidence_synthesis skill summarizes multiple articles into concise summary with citations",
+        "Results always include source citations (PMID, authors, journal, year)",
+        "Evidence levels noted for each result (meta-analysis, RCT, cohort, case)",
+        "All outputs present as 'evidence suggests...' not as clinical recommendations"
+      ],
+      "priority": 9,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-009",
+        "US-021"
+      ]
+    },
+    {
+      "id": "US-023",
+      "title": "Implement Diagnostic Agent with differential diagnosis",
+      "description": "As a developer, I need the Diagnostic Agent so differential diagnoses can be generated from clinical data. Create backend/agents/diagnostic_agent.py with class DiagnosticAgent(BaseAgent): agent_id='diagnostic', name='Diagnostic Agent', icon='🔬', color='#22c55e', skills=['differential_dx','test_recommendation','pattern_recognition','rare_disease'], models_used=['MedGemma 27B','Claude API']. Implement differential_dx: accept symptoms (list[str]), vitals (dict), lab_results (dict optional), imaging_results (dict optional), patient_history (dict). Use Claude API (MedGemma 27B fallback) for clinical reasoning. Return ranked differentials[] (diagnosis, probability, supporting_evidence[], contradicting_evidence[]), recommended_tests[]. Implement test_recommendation: suggest labs/imaging based on differential list. Implement pattern_recognition: identify symptom patterns. Chat with diagnostic system prompt.",
+      "acceptanceCriteria": [
+        "backend/agents/diagnostic_agent.py exists inheriting from BaseAgent",
+        "differential_dx skill accepts clinical data and returns ranked differential diagnosis list",
+        "Each differential includes diagnosis, probability, supporting and contradicting evidence",
+        "Recommended tests returned based on differential list",
+        "Pattern recognition identifies known symptom-disease patterns",
+        "All outputs include disclaimer: 'AI-assisted — requires clinician verification'"
+      ],
+      "priority": 9,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-009",
+        "US-014"
+      ]
+    },
+    {
+      "id": "US-024",
+      "title": "Implement Coordinator Agent with routing and consensus",
+      "description": "As a developer, I need the Coordinator Agent so incoming messages are routed to the correct specialist and complex cases get multi-agent consensus. Create backend/agents/coordinator_agent.py with class CoordinatorAgent(BaseAgent): agent_id='coordinator', name='Coordinator Agent', icon='🧠', color='#e879f9', skills=['agent_routing','consensus','safety_check','escalation'], models_used=['Claude API']. Implement agent_routing: accept message (str), use Claude to analyze intent and determine which specialist agent(s) to invoke. Return: target_agents (list[str]), reasoning (str). Implement consensus: accept agent_results (list[dict]) from multiple agents, analyze agreement/disagreement, build combined report. If agents disagree, present both findings with confidence scores and flag for human review. Implement safety_check: verify confidence > 0.7, check for critical flags (ESI 1-2, critical drug interactions), enforce escalation. Implement escalation: log and trigger alert for attending physician. Register all other agents in coordinator for routing.",
+      "acceptanceCriteria": [
+        "backend/agents/coordinator_agent.py exists inheriting from BaseAgent",
+        "agent_routing uses Claude to analyze message and select target specialist agent(s)",
+        "consensus method merges results from multiple agents and flags disagreements",
+        "safety_check verifies confidence > 0.7 and checks for critical flags",
+        "escalation method logs alert for ESI 1-2 and critical findings",
+        "Coordinator holds references to all specialist agents for dispatching"
+      ],
+      "priority": 9,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-015",
+        "US-016",
+        "US-018",
+        "US-019",
+        "US-020",
+        "US-022",
+        "US-023"
+      ]
+    },
+    {
+      "id": "US-025",
+      "title": "Create FHIR R4 EHR integration client",
+      "description": "As a developer, I need a FHIR client so agents can read patient data from EHR systems. Create backend/integrations/fhir_client.py with class FHIRClient: __init__(base_url: str). Methods: async get_patient(patient_id: str) -> dict fetching Patient resource. async get_conditions(patient_id: str) -> list[dict] fetching active Condition resources. async get_medications(patient_id: str) -> list[dict] fetching active MedicationRequest resources. async get_allergies(patient_id: str) -> list[dict] fetching AllergyIntolerance resources. async get_observations(patient_id: str, category: str) -> list[dict] fetching Observation resources (vitals, labs). Use httpx.AsyncClient. Parse FHIR R4 JSON resources into simplified dicts. Handle connection errors gracefully (return empty results if EHR unavailable).",
+      "acceptanceCriteria": [
+        "backend/integrations/fhir_client.py exists with FHIRClient class",
+        "get_patient returns patient demographics (name, age, gender, DOB)",
+        "get_conditions returns list of active conditions",
+        "get_medications returns list of current medications",
+        "get_allergies returns list of allergies/intolerances",
+        "get_observations returns vitals or labs filtered by category",
+        "Graceful error handling when FHIR server is unavailable"
+      ],
+      "priority": 10,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-008"
+      ]
+    },
+    {
+      "id": "US-026",
+      "title": "Create Orthanc DICOM integration client",
+      "description": "As a developer, I need a DICOM client so the Radiology Agent can receive and retrieve medical images from Orthanc. Create backend/integrations/dicom_client.py with class DicomClient: __init__(host: str, port: int). Methods: async upload_study(dicom_bytes: bytes) -> str uploading DICOM file to Orthanc REST API (POST /instances), returning instance ID. async get_study(study_id: str) -> dict retrieving study metadata from Orthanc. async get_image(instance_id: str) -> PIL.Image retrieving rendered image (GET /instances/{id}/preview) and converting to PIL.Image for model input. async list_studies(patient_id: str) -> list[dict] listing all studies for a patient. Use httpx.AsyncClient for all requests to Orthanc REST API (default port 8042).",
+      "acceptanceCriteria": [
+        "backend/integrations/dicom_client.py exists with DicomClient class",
+        "upload_study method uploads DICOM to Orthanc and returns instance ID",
+        "get_study returns study metadata",
+        "get_image retrieves image and converts to PIL.Image for model inference",
+        "list_studies returns all studies for a given patient",
+        "Uses httpx.AsyncClient with configurable host and port"
+      ],
+      "priority": 10,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-007",
+        "US-008"
+      ]
+    },
+    {
+      "id": "US-027",
+      "title": "Implement all REST API endpoints for agents and skills",
+      "description": "As a developer, I need all REST API endpoints wired up so the frontend and external clients can interact with agents. In backend/main.py (or separate router files) add: GET /agents returning list of all 8 agents via get_info(). GET /agents/{id} returning single agent detail. POST /agents/{id}/chat accepting {message, context} and returning streaming SSE response via agent.chat(). POST /agents/{id}/execute accepting {skill_name, params} and returning agent.execute_skill() result. GET /skills listing all registered skills across agents. POST /triage/assess accepting patient data and invoking TriageAgent.execute_skill('esi_scoring', params). POST /radiology/analyze accepting image upload (multipart) and invoking RadiologyAgent.execute_skill('xray_analysis', params). POST /pharmacy/check accepting {drug_names, patient_id} and invoking PharmacyAgent.execute_skill('drug_interaction', params). POST /monitoring/vitals accepting vitals dict and invoking MonitoringAgent.execute_skill('mews_score', params). POST /documentation/generate accepting encounter data and invoking DocumentationAgent.execute_skill('soap_notes', params). POST /research/search accepting {query} and invoking ResearchAgent.execute_skill('guideline_search', params). Initialize all agents on startup. Use APIRouter for clean organization. Verify all endpoints respond correctly with curl or httpie.",
+      "acceptanceCriteria": [
+        "GET /agents returns list of all 8 agents with id, name, status, skills, queue, color, icon",
+        "GET /agents/{id} returns single agent detail or 404",
+        "POST /agents/{id}/chat streams responses via SSE using agent.chat()",
+        "POST /agents/{id}/execute invokes skill and returns structured result",
+        "POST /triage/assess invokes triage ESI scoring and returns assessment",
+        "POST /radiology/analyze accepts image upload and returns analysis with findings",
+        "POST /pharmacy/check returns drug interaction results with severity",
+        "POST /monitoring/vitals returns MEWS score and alert level",
+        "POST /documentation/generate returns SOAP note sections",
+        "POST /research/search returns PubMed results with evidence levels",
+        "All domain endpoints return proper error responses for invalid input"
+      ],
+      "priority": 10,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-024"
+      ]
+    },
+    {
+      "id": "US-028",
+      "title": "Integrate frontend React dashboard with backend API",
+      "description": "As a developer, I need the existing React dashboard connected to the real backend API so mock data is replaced with live data. Update medassist-agent-interface.jsx (or copy to frontend/src/components/MedAssistDashboard.jsx if frontend is scaffolded): Replace the static agents array with a useEffect that fetches from GET /agents on mount. Replace triagePatients with fetch from GET /triage/assess or a new GET /triage/queue endpoint. Replace radiologyReport with fetch from a reports endpoint. Replace vitals with fetch from GET /monitoring/vitals. Update handleSend in Agent Chat to POST to /agents/{id}/chat and stream SSE responses instead of setTimeout mock. Add API base URL config (default http://localhost:8000). Keep the existing UI design, styling, and layout unchanged. Add error states for when backend is unreachable.",
+      "acceptanceCriteria": [
+        "Agent dashboard fetches agent list from GET /agents API on mount",
+        "Triage view fetches patient queue from backend instead of static mock data",
+        "Radiology view fetches report data from backend",
+        "Vitals view fetches live vital signs from backend",
+        "Agent Chat sends messages to POST /agents/{id}/chat and renders streamed responses",
+        "API base URL is configurable (default http://localhost:8000)",
+        "Error states shown when backend is unreachable",
+        "Existing UI design, colors, and layout preserved"
+      ],
+      "priority": 11,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-027"
+      ]
+    },
+    {
+      "id": "US-029",
+      "title": "Create clinical scenario end-to-end tests",
+      "description": "As a developer, I need end-to-end tests for critical clinical scenarios so I can verify the system works correctly. Create backend/tests/test_scenarios.py using pytest + httpx.AsyncClient. Scenario 1 (ESI-1 triage): POST /triage/assess with 67F, crushing chest pain, BP 90/60, HR 110, SpO2 94% → assert esi_score=1, red_flags not empty, routing contains 'resuscitation'. Scenario 2 (ESI-3 triage): POST /triage/assess with 32F, abdominal pain, fever 39.2C → assert esi_score=3. Scenario 3 (Drug interaction): POST /pharmacy/check with ['warfarin','ibuprofen'] → assert severity='Critical', blocked=true. Scenario 4 (MEWS critical): POST /monitoring/vitals with HR=135, BP sys=80, RR=32, Temp=39.5 → assert mews >= 5, alert_level='Critical'. Scenario 5 (Radiology): POST /radiology/analyze with sample image → assert findings list not empty, each finding has confidence score. Scenario 6 (Agent routing): POST /agents/coordinator/chat with 'check drug interaction between warfarin and aspirin' → assert routes to pharmacy agent. Scenario 7 (SOAP note): POST /documentation/generate with mock encounter → assert all 4 SOAP sections present. Run tests: cd backend && pytest tests/test_scenarios.py -v.",
+      "acceptanceCriteria": [
+        "backend/tests/test_scenarios.py exists with at least 7 test scenarios",
+        "ESI-1 scenario verifies correct triage scoring for life-threatening presentation",
+        "Drug interaction scenario verifies Critical severity and workflow blocking",
+        "MEWS scenario verifies correct score calculation and critical alert",
+        "Radiology scenario verifies findings with confidence scores returned",
+        "Agent routing scenario verifies coordinator routes to correct specialist",
+        "SOAP note scenario verifies all 4 sections generated",
+        "Tests use pytest and httpx.AsyncClient against running FastAPI app",
+        "pytest tests/test_scenarios.py -v runs without import errors"
+      ],
+      "priority": 11,
+      "passes": false,
+      "notes": "Requires backend running with Docker Compose services up. Some tests need Claude API key.",
+      "dependsOn": [
+        "US-027"
+      ]
+    }
+  ],
+  "metadata": {
+    "updatedAt": "2026-02-08T04:49:42.477Z"
+  }
+}

@@ -1,0 +1,9 @@
+configVersion = "2.1"
+maxIterations = 50
+agent = "claude"
+tracker = "json"
+autoCommit = true
+subagentTracingDetail = "full"
+
+[agentOptions]
+[trackerOptions]
