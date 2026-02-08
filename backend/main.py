@@ -18,8 +18,10 @@ from backend.agents.radiology_agent import init_radiology_agent
 from backend.agents.pharmacy_agent import init_pharmacy_agent
 from backend.agents.monitoring_agent import init_monitoring_agent
 from backend.agents.documentation_agent import init_documentation_agent
+from backend.agents.research_agent import init_research_agent
 from backend.integrations.rxnorm_client import init_rxnorm, close_rxnorm
 from backend.integrations.drugbank_client import init_drugbank, close_drugbank
+from backend.integrations.pubmed_client import init_pubmed, close_pubmed
 
 
 @asynccontextmanager
@@ -66,9 +68,10 @@ async def lifespan(app: FastAPI):
     else:
         print("   WARNING: ANTHROPIC_API_KEY not set - Radiology Agent will not be available")
 
-    # Initialize RxNorm and DrugBank clients
+    # Initialize RxNorm, DrugBank, and PubMed clients
     await init_rxnorm()
     await init_drugbank()
+    await init_pubmed()
 
     # Initialize Pharmacy Agent
     if settings.ANTHROPIC_API_KEY:
@@ -88,6 +91,12 @@ async def lifespan(app: FastAPI):
     else:
         print("   WARNING: ANTHROPIC_API_KEY not set - Documentation Agent will not be available")
 
+    # Initialize Research Agent
+    if settings.ANTHROPIC_API_KEY:
+        init_research_agent(anthropic_api_key=settings.ANTHROPIC_API_KEY)
+    else:
+        print("   WARNING: ANTHROPIC_API_KEY not set - Research Agent will not be available")
+
     yield
 
     # Shutdown
@@ -96,6 +105,7 @@ async def lifespan(app: FastAPI):
     await close_qdrant()
     await close_rxnorm()
     await close_drugbank()
+    await close_pubmed()
 
 
 # Initialize FastAPI app
@@ -125,7 +135,7 @@ async def health_check():
     """
     return {
         "status": "ok",
-        "agents_online": 7,
+        "agents_online": 8,
         "version": "2.0"
     }
 

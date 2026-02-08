@@ -1,12 +1,12 @@
 {
   "version": 1,
-  "sessionId": "9ac5035c-c45b-457e-8b93-b16d5d266784",
+  "sessionId": "e1e352de-949b-4c9e-ba2c-1d22b4539041",
   "status": "running",
-  "startedAt": "2026-02-08T07:59:56.322Z",
-  "updatedAt": "2026-02-08T08:23:56.998Z",
-  "currentIteration": 2,
+  "startedAt": "2026-02-08T11:49:34.298Z",
+  "updatedAt": "2026-02-08T11:51:40.456Z",
+  "currentIteration": 0,
   "maxIterations": 50,
-  "tasksCompleted": 2,
+  "tasksCompleted": 0,
   "isPaused": false,
   "agentPlugin": "claude",
   "trackerState": {
@@ -126,18 +126,18 @@
         "id": "US-019",
         "title": "Implement Monitoring Agent with MEWS scoring",
         "status": "completed",
-        "completedInSession": true
+        "completedInSession": false
       },
       {
         "id": "US-020",
         "title": "Implement Documentation Agent with SOAP notes",
         "status": "completed",
-        "completedInSession": true
+        "completedInSession": false
       },
       {
         "id": "US-021",
         "title": "Create PubMed integration client",
-        "status": "open",
+        "status": "completed",
         "completedInSession": false
       },
       {
@@ -190,28 +190,7 @@
       }
     ]
   },
-  "iterations": [
-    {
-      "iteration": 1,
-      "status": "completed",
-      "taskId": "US-019",
-      "taskTitle": "Implement Monitoring Agent with MEWS scoring",
-      "taskCompleted": true,
-      "durationMs": 379268,
-      "startedAt": "2026-02-08T08:00:10.252Z",
-      "endedAt": "2026-02-08T08:06:29.520Z"
-    },
-    {
-      "iteration": 2,
-      "status": "completed",
-      "taskId": "US-020",
-      "taskTitle": "Implement Documentation Agent with SOAP notes",
-      "taskCompleted": true,
-      "durationMs": 448850,
-      "startedAt": "2026-02-08T08:06:30.832Z",
-      "endedAt": "2026-02-08T08:13:59.682Z"
-    }
-  ],
+  "iterations": [],
   "skippedTaskIds": [],
   "cwd": "C:\\Dev\\openclaw",
   "activeTaskIds": [],
