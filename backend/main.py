@@ -11,6 +11,7 @@ from backend.config import settings
 from backend.integrations.database import init_db, close_db_pool
 from backend.integrations.qdrant_client import init_qdrant, close_qdrant
 from backend.models.clinical_bert import init_clinical_bert
+from backend.models.medimageinsight import init_medimageinsight
 
 
 @asynccontextmanager
@@ -38,6 +39,9 @@ async def lifespan(app: FastAPI):
 
     # Initialize ClinicalBERT service
     init_clinical_bert(anthropic_api_key=settings.ANTHROPIC_API_KEY)
+
+    # Initialize MedImageInsight service
+    init_medimageinsight(model_dir=settings.MEDIMAGEINSIGHT_MODEL_DIR)
 
     yield
 
