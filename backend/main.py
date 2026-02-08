@@ -16,6 +16,7 @@ from backend.models.medgemma import init_medgemma
 from backend.agents.triage_agent import init_triage_agent
 from backend.agents.radiology_agent import init_radiology_agent
 from backend.agents.pharmacy_agent import init_pharmacy_agent
+from backend.agents.monitoring_agent import init_monitoring_agent
 from backend.integrations.rxnorm_client import init_rxnorm, close_rxnorm
 from backend.integrations.drugbank_client import init_drugbank, close_drugbank
 
@@ -73,6 +74,12 @@ async def lifespan(app: FastAPI):
         await init_pharmacy_agent(anthropic_api_key=settings.ANTHROPIC_API_KEY)
     else:
         print("   WARNING: ANTHROPIC_API_KEY not set - Pharmacy Agent will not be available")
+
+    # Initialize Monitoring Agent
+    if settings.ANTHROPIC_API_KEY:
+        init_monitoring_agent(anthropic_api_key=settings.ANTHROPIC_API_KEY)
+    else:
+        print("   WARNING: ANTHROPIC_API_KEY not set - Monitoring Agent will not be available")
 
     yield
 
