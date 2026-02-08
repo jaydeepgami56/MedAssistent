@@ -26,6 +26,7 @@ from backend.integrations.drugbank_client import init_drugbank, close_drugbank
 from backend.integrations.pubmed_client import init_pubmed, close_pubmed
 from backend.integrations.fhir_client import init_fhir, close_fhir
 from backend.integrations.dicom_client import init_dicom, close_dicom
+from backend.routers import agents_router
 
 
 @asynccontextmanager
@@ -178,6 +179,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Include routers
+app.include_router(agents_router)
 
 
 @app.get("/health")

@@ -248,3 +248,116 @@ All specialist agents follow a consistent pattern:
 
 ---
 
+## 2026-02-08 - US-027: Implement all REST API endpoints for agents and skills
+
+**What was implemented:**
+- Created `backend/routers/agents.py` with complete REST API router containing 11 endpoints
+- Core agent endpoints:
+  1. `GET /agents` - List all registered agents with full metadata
+  2. `GET /agents/{agent_id}` - Get single agent details with 404 handling
+  3. `POST /agents/{agent_id}/chat` - Stream chat responses via Server-Sent Events (SSE)
+  4. `POST /agents/{agent_id}/execute` - Execute specific agent skills with validation
+  5. `GET /agents/skills/list` - List all skills across all agents
+- Domain-specific endpoints:
+  6. `POST /agents/triage/assess` - ESI scoring and triage assessment
+  7. `POST /agents/radiology/analyze` - Image upload and analysis (multipart/form-data)
+  8. `POST /agents/pharmacy/check` - Drug interaction checking
+  9. `POST /agents/monitoring/vitals` - MEWS score calculation
+  10. `POST /agents/documentation/generate` - SOAP note generation
+  11. `POST /agents/research/search` - PubMed and guideline search
+- Created Pydantic request models for all domain endpoints with proper validation and optional fields
+- Integrated router into `backend/main.py` via `app.include_router(agents_router)`
+- Created comprehensive test suite to verify endpoint registration, signatures, and error handling
+
+**Files changed:**
+- `backend/routers/agents.py` (new, 541 lines)
+- `backend/routers/__init__.py` (new, exports router)
+- `backend/main.py` (added router import and registration)
+- `backend/routers/README.md` (new, comprehensive API documentation)
+- `test_endpoints.py` (new, endpoint registration verification)
+- `test_api_signatures.py` (new, Pydantic model validation)
+- `test_api_integration.py` (new, integration tests)
+
+**Learnings:**
+
+- **Pattern: FastAPI Router Organization** - Use `APIRouter` with prefix and tags for clean separation of concerns:
+  ```python
+  router = APIRouter(prefix="/agents", tags=["agents"])
+  ```
+  Then include in main app with `app.include_router(agents_router)`. This keeps main.py clean and routes organized by domain.
+
+- **Pattern: Pydantic Request Models** - Define request models with `BaseModel` for automatic validation, serialization, and OpenAPI docs:
+  ```python
+  class ChatRequest(BaseModel):
+      message: str
+      context: Optional[dict] = {}  # Optional with default
+  ```
+  FastAPI automatically validates request bodies, generates API docs, and provides type hints.
+
+- **Pattern: Streaming SSE Responses** - For streaming chat, use `StreamingResponse` with async generator:
+  ```python
+  async def generate():
+      async for chunk in agent.chat(message, context):
+          yield f"data: {chunk}\n\n"  # SSE format
+  return StreamingResponse(generate(), media_type="text/event-stream")
+  ```
+  SSE format requires `data: <content>\n\n` for each message.
+
+- **Pattern: File Upload Handling** - Use `UploadFile = File(...)` for multipart uploads:
+  ```python
+  async def endpoint(file: UploadFile = File(...), param: str = "default"):
+      image_bytes = await file.read()
+  ```
+  Always validate file is non-empty before processing. `UploadFile` is async-friendly and handles large files efficiently.
+
+- **Pattern: Agent Registry Pattern** - Create helper functions to get all agents or specific agent by ID:
+  ```python
+  def get_all_agents():
+      return [get_triage_agent(), get_radiology_agent(), ...]
+  
+  def get_agent_by_id(agent_id: str):
+      agent_getters = {"triage": get_triage_agent, ...}
+      return agent_getters.get(agent_id)()
+  ```
+  This centralizes agent lookup logic and makes it easy to iterate over all agents.
+
+- **Pattern: Consistent Error Handling** - Use HTTPException with appropriate status codes:
+  - 404: Resource not found (agent doesn't exist)
+  - 400: Invalid input (missing skill, empty file, validation error)
+  - 500: Execution failed (wrapped exception)
+  - 503: Service unavailable (agent not initialized)
+  
+  Always include descriptive `detail` message for debugging.
+
+- **Pattern: Domain Endpoint Mapping** - Map domain endpoints directly to agent skills:
+  ```python
+  @router.post("/triage/assess")
+  async def triage_assess(request: TriageAssessRequest):
+      return await agent.execute_skill("esi_scoring", request.dict())
+  ```
+  This provides a clean, domain-specific API while delegating to the underlying agent system.
+
+- **Gotcha: Agent Initialization Order** - Endpoints can import agent getter functions safely because they're called at request time, not module load time. The agents are initialized in main.py lifespan() before any requests are handled.
+
+- **Gotcha: Optional Fields in Pydantic** - Use `Optional[T] = default` for optional fields:
+  ```python
+  history: Optional[dict] = {}
+  patient_id: Optional[str] = None
+  ```
+  Without the default value, the field is still required even with `Optional`.
+
+- **Gotcha: UploadFile vs File Parameter** - `UploadFile = File(...)` allows additional parameters (study_type, patient_id), while `file: UploadFile` alone requires the file to be the only parameter. Use `= File(...)` syntax for flexibility.
+
+- **Design Choice: Path Parameters** - Used `{agent_id}` instead of `{id}` for clarity. More explicit path parameters improve API self-documentation and reduce ambiguity.
+
+- **Design Choice: Skill Validation** - Validate requested skill exists on agent before execution:
+  ```python
+  if skill_name not in agent.skills:
+      raise HTTPException(400, detail=f"Skill '{skill_name}' not available")
+  ```
+  This provides immediate feedback rather than waiting for the agent's execute_skill to fail.
+
+- **Design Choice: StreamingResponse for Chat** - Used SSE (Server-Sent Events) instead of WebSockets for chat streaming. SSE is simpler (HTTP-based), works with standard HTTP clients (curl, requests), and is sufficient for one-way streaming from agent to client.
+
+---
+
