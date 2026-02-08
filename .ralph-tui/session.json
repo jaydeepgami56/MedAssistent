@@ -3,7 +3,7 @@
   "sessionId": "51a2b1b1-96a6-439f-805f-0f7ad4c899c0",
   "status": "running",
   "startedAt": "2026-02-08T04:25:57.445Z",
-  "updatedAt": "2026-02-08T04:49:42.489Z",
+  "updatedAt": "2026-02-08T04:54:21.458Z",
   "currentIteration": 3,
   "maxIterations": 50,
   "tasksCompleted": 3,
@@ -224,8 +224,6 @@
   ],
   "skippedTaskIds": [],
   "cwd": "C:\\Dev\\openclaw",
-  "activeTaskIds": [
-    "US-004"
-  ],
+  "activeTaskIds": [],
   "subagentPanelVisible": false
 }
