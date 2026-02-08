@@ -151,6 +151,18 @@ after each iteration and it's included in prompts for context.
 - **Safety-first recommendations**: Tiered by confidence: < 0.7 = "MANDATORY HUMAN REVIEW", high-severity = "URGENT", normal = "Review findings". Never auto-approve clinical decisions.
 - **Mock image testing**: Use numpy for test images: `np.random.randint(0, 256, (512, 512), dtype=np.uint8)`. Add simulated pathology with different intensity regions. Enables testing without real DICOM files.
 
+### External API Integration Pattern (RxNorm, DrugBank, PubMed)
+- **Location**: `backend/integrations/{api_name}_client.py` - One file per external API (rxnorm_client, drugbank_client, pubmed_client)
+- **Class structure**: Single client class (e.g., RxNormClient) with __init__(base_url), async methods for API operations, and async close() method
+- **HTTP client**: Use `httpx.AsyncClient(timeout=30.0)` with authentication headers if needed. Store as instance variable for connection pooling.
+- **Method return pattern**: Return structured dicts with success/error fields. Never raise exceptions - return {"found": False, "error": "message"} for failures.
+- **Error handling hierarchy**: Catch httpx.HTTPStatusError (API errors), httpx.RequestError (connection errors), and Exception (unexpected). Log errors and return graceful fallback data.
+- **Mock data fallback**: For APIs requiring paid access (DrugBank), implement comprehensive mock data methods (_mock_*) with common drugs. Add "mock": True indicator to responses.
+- **API-specific patterns**: RxNorm uses nested JSON (`{"idGroup": {"rxnormId": ["1191"]}}`), DrugBank uses list responses. Parse carefully and extract relevant fields.
+- **Singleton pattern**: Global `_client` variable with `init_client()`, `close_client()`, and `get_client()` functions. Consistent with database/Qdrant pattern.
+- **Testing pattern**: Module-level @pytest.mark.asyncio functions (not class-based). Create/close client in each test. Test real API calls (RxNorm is public) and mock fallbacks (DrugBank).
+- **Rate limiting**: Document rate limits in docstrings. Use appropriate timeouts (30s default). RxNorm is public with no auth. DrugBank/PubMed may require API keys.
+
 ---
 
 ## [2026-02-08] - US-001 - Install System Prerequisites
@@ -809,4 +821,44 @@ after each iteration and it's included in prompts for context.
   - FastAPI endpoints will be added to expose agent skills via REST API (e.g., POST /radiology/analyze)
   - A2UI templates will be integrated to render radiology reports on Canvas
   - Real DICOM image handling will be added via Orthanc integration
+---
+
+
+## [2026-02-08] - US-017 - Create RxNorm and DrugBank integration clients
+- **Status**: COMPLETE - Both RxNorm and DrugBank integration clients created and verified
+- **What was implemented**:
+  - Created backend/integrations/rxnorm_client.py with RxNormClient class for drug name resolution and interaction checking
+  - Created backend/integrations/drugbank_client.py with DrugBankClient class for comprehensive drug information
+  - Implemented async HTTP operations using httpx.AsyncClient
+  - Implemented comprehensive error handling for API failures and rate limiting
+  - Created comprehensive test suites for both clients (30 tests total, all passing)
+- **Files created**:
+  - `backend/integrations/rxnorm_client.py` - RxNorm API client (310 lines)
+  - `backend/integrations/drugbank_client.py` - DrugBank API client (540 lines)
+  - `backend/tests/test_rxnorm_client.py` - RxNorm test suite (211 lines, 13 tests)
+  - `backend/tests/test_drugbank_client.py` - DrugBank test suite (277 lines, 17 tests)
+- **Acceptance Criteria Verification**:
+  - ✅ backend/integrations/rxnorm_client.py exists with RxNormClient class
+  - ✅ resolve_drug_name method calls RxNorm REST API (GET /rxcui.json?name={name}) and returns CUI + normalized name
+  - ✅ get_interactions method returns pairwise drug interactions from RxNorm (GET /interaction/list.json)
+  - ✅ backend/integrations/drugbank_client.py exists with DrugBankClient class
+  - ✅ Both clients use httpx.AsyncClient for async HTTP operations
+  - ✅ Error handling for API failures (HTTPStatusError, RequestError) and rate limiting with graceful degradation
+  - ✅ All 30 tests passed (13 RxNorm tests + 17 DrugBank tests)
+- **Learnings**:
+  - **RxNorm API Response Format**: RxNorm API returns data in nested structure `{"idGroup": {"rxnormId": ["1191"]}}`. Always extract first RxCUI from list as most relevant match.
+  - **Drug Name Normalization**: Use separate API call (`GET /rxcui/{rxcui}/property.json?propName=RxNorm Name`) to get normalized drug name from RxCUI. This ensures consistent naming across the system.
+  - **Interaction API Format**: RxNorm interaction API expects space-separated RxCUIs with + delimiter (e.g., "1191+5640+11289"). Returns pairwise interactions between all drug combinations.
+  - **DrugBank Mock Data Pattern**: Without API key, implement comprehensive mock data for common drugs (aspirin, ibuprofen, warfarin, metformin, lisinopril). Mock data includes drugbank_id, name, description, indication, pharmacology, interactions, and contraindications. This enables development without institutional DrugBank access.
+  - **Mock Data Indicator**: Add "mock": True field to all mock responses so consuming code can distinguish between real API data and mock data. Important for production readiness checks.
+  - **Async HTTP Client Lifecycle**: Use httpx.AsyncClient with manual creation and cleanup (await client.aclose()). Store client as instance variable for connection pooling across multiple requests.
+  - **Singleton Pattern for Integration Clients**: Same pattern as database/Qdrant integrations - global _client variable with init_client() and get_client() functions. Consistent across all integrations.
+  - **Error Handling Philosophy**: Return structured error dicts instead of raising exceptions. Include "found": False and "error" message fields. This allows consuming code to handle failures gracefully without try/except blocks.
+  - **pytest-asyncio Pattern**: Don't use class-based tests with async fixtures. Instead, use module-level @pytest.mark.asyncio decorated functions that create/cleanup client instances directly. Avoids fixture lifecycle issues.
+  - **API Rate Limiting**: RxNorm API has no authentication and is public, so no rate limiting headers. DrugBank API (if used with key) may have rate limits. Both clients use 30-second timeouts for robustness.
+- **Next Steps**:
+  - Pharmacy Agent (US-018) will use both RxNormClient and DrugBankClient for drug interaction checking
+  - resolve_drug_name() will be called to convert drug names to RxCUIs before interaction checking
+  - get_interactions() will be used to detect drug-drug interactions with severity classification
+  - get_contraindications() will be used to check for absolute/relative contraindications based on patient conditions
 ---
