@@ -14,6 +14,7 @@ from backend.models.clinical_bert import init_clinical_bert
 from backend.models.medimageinsight import init_medimageinsight
 from backend.models.medgemma import init_medgemma
 from backend.agents.triage_agent import init_triage_agent
+from backend.agents.radiology_agent import init_radiology_agent
 
 
 @asynccontextmanager
@@ -53,6 +54,12 @@ async def lifespan(app: FastAPI):
         init_triage_agent(anthropic_api_key=settings.ANTHROPIC_API_KEY)
     else:
         print("   WARNING: ANTHROPIC_API_KEY not set - Triage Agent will not be available")
+
+    # Initialize Radiology Agent
+    if settings.ANTHROPIC_API_KEY:
+        init_radiology_agent(anthropic_api_key=settings.ANTHROPIC_API_KEY)
+    else:
+        print("   WARNING: ANTHROPIC_API_KEY not set - Radiology Agent will not be available")
 
     yield
 
