@@ -25,6 +25,15 @@ after each iteration and it's included in prompts for context.
 - **Documentation**: All markdown docs in `docs/` directory, keep root clean
 - **Model files**: Large AI model files go in `models/` directory (gitignored), never commit multi-GB files
 
+### A2UI JSONL Template Pattern
+- **Format**: JSONL (JSON Lines) - each JSON object must be on a SINGLE line (no multi-line formatting)
+- **Structure**: Two lines per template: `surfaceUpdate` (component definitions) + `beginRendering` (start rendering)
+- **Components**: Card (container), Column/Row (layout), Text (display), Button (action), TextField (input), List (items)
+- **Data binding**: Use `{"binding":{"key":"var_name"}}` for dynamic data
+- **Hierarchy**: All components start with root (Column/Row), children defined with `{"explicitList":["id1","id2"]}`
+- **Validation**: `python -c "import json; [json.loads(line) for line in open('file.jsonl', encoding='utf-8')]"`
+- **Push to Canvas**: `openclaw nodes canvas a2ui push --jsonl <file>.jsonl --node <node-id>`
+
 ---
 
 ## [2026-02-08] - US-001 - Install System Prerequisites
@@ -219,5 +228,45 @@ after each iteration and it's included in prompts for context.
   - US-006 will create A2UI JSONL templates in a2ui/templates/
   - Backend Python implementation will wire up these skills to actual AI models
   - Agent configuration in OpenClaw will reference these SKILL.md files for execution logic
+---
+
+
+## [2026-02-08] - US-006 - Create all A2UI JSONL templates
+- **Status**: COMPLETE - All 6 A2UI JSONL template files created and validated
+- **What was implemented**:
+  - Created 6 A2UI JSONL template files with surfaceUpdate and beginRendering messages
+  - Each template follows A2UI protocol with component hierarchy and data binding
+  - All files validated as valid JSONL format (one JSON object per line)
+- **Files created**:
+  - `a2ui/templates/triage-dashboard.jsonl` - Emergency triage dashboard with ESI 1-5 stats cards, patient queue list, and disclaimer
+  - `a2ui/templates/radiology-report.jsonl` - Split-panel radiology report (left: patient info, findings, classification; right: KNN evidence, recommendation, actions)
+  - `a2ui/templates/drug-alert.jsonl` - Drug interaction alert with drug pair display, severity badge, interaction detail, evidence card, and action buttons
+  - `a2ui/templates/patient-vitals.jsonl` - Patient vitals monitor with 6 vital sign cards (HR, BP, SpO2, Temp, RR, MEWS), trend chart, alert card, and actions
+  - `a2ui/templates/clinical-notes.jsonl` - SOAP format clinical notes with editable TextFields for S/O/A/P sections, ICD-10 code suggestions, and action buttons
+  - `a2ui/templates/evidence-panel.jsonl` - Clinical evidence panel with search query display, evidence cards list, clinical trials section, and action buttons
+  - `.ralph-tui/progress.md` - Updated this file
+- **Acceptance Criteria Verification**:
+  - ✅ a2ui/templates/triage-dashboard.jsonl exists with valid JSONL containing surfaceUpdate and beginRendering
+  - ✅ a2ui/templates/radiology-report.jsonl exists with split-panel layout components (left/right panels)
+  - ✅ a2ui/templates/drug-alert.jsonl exists with drug pair display and severity badge components
+  - ✅ a2ui/templates/patient-vitals.jsonl exists with 6 vital sign card components (HR, BP, SpO2, Temp, RR, MEWS) and trend chart
+  - ✅ a2ui/templates/clinical-notes.jsonl exists with SOAP TextField components and ICD-10 codes list
+  - ✅ a2ui/templates/evidence-panel.jsonl exists with research result card components
+  - ✅ All JSONL files are valid JSON lines format - verified with Python JSON parser
+  - ⚠️ Template push to Canvas: No active OpenClaw nodes available for testing (`openclaw nodes list` returns "Pending: 0 · Paired: 0"). Templates are ready for push when nodes become available.
+- **Learnings**:
+  - **JSONL Format**: JSONL (JSON Lines) requires each JSON object to be on a SINGLE line, not multi-line formatted JSON. Each file has exactly 2 lines: one `surfaceUpdate` message and one `beginRendering` message
+  - **A2UI Protocol**: A2UI templates use three message types: `surfaceUpdate` (define components), `beginRendering` (start rendering with root component), `dataModelUpdate` (push real-time data)
+  - **Component Hierarchy**: All components start with a root component, typically a Column or Row, with children defined using `explicitList` arrays
+  - **Data Binding**: Use `{"binding":{"key":"variable_name"}}` for dynamic data binding to component properties (text, items, etc.)
+  - **Component Types**: Card (container), Column/Row (layout), Text (display), Button (action), TextField (input), List (items)
+  - **Unicode in JSONL**: Files contain Unicode characters (emojis like ⚠️, ❤️, 🩸, 🫁, 🌡️, 💨, 📈) - must use UTF-8 encoding when reading
+  - **Python Validation**: Use `python -c "import json; [json.loads(line) for line in open('file.jsonl', encoding='utf-8')]"` to validate JSONL files
+  - **OpenClaw Nodes**: The `openclaw nodes list` command shows paired nodes for Canvas operations. Nodes must be created/paired before templates can be pushed
+  - **Template Structure Pattern**: All templates follow: title → content sections → actions → disclaimer
+- **Next Steps**:
+  - To test template push: User needs to create/pair an OpenClaw node, then run `openclaw nodes canvas a2ui push --jsonl a2ui/templates/triage-dashboard.jsonl --node <node-id>`
+  - Backend Python code will eventually populate these templates with real data using `dataModelUpdate` messages
+  - Templates are now ready for integration with agent SKILL.md output formats
 ---
 
