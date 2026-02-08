@@ -442,3 +442,127 @@ async def research_search(request: ResearchRequest):
     except Exception as e:
         logger.error(f"Error in research search: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Research search failed: {str(e)}")
+
+
+# Queue/Data endpoints for frontend dashboard
+@router.get("/triage/queue")
+async def get_triage_queue():
+    """
+    Get current triage patient queue.
+
+    Returns:
+        List of patients in triage queue with ESI levels, complaints, and wait times
+
+    Note:
+        This is mock data for now. In production, would query from database.
+    """
+    # Mock data matching the frontend structure
+    return [
+        {
+            "id": 1,
+            "name": "Patient A — 67F",
+            "complaint": "Chest pain, shortness of breath",
+            "esi": 1,
+            "color": "#ef4444",
+            "label": "Resuscitation",
+            "time": "0 min"
+        },
+        {
+            "id": 2,
+            "name": "Patient B — 45M",
+            "complaint": "Stroke symptoms (FAST positive)",
+            "esi": 2,
+            "color": "#f97316",
+            "label": "Emergency",
+            "time": "< 10 min"
+        },
+        {
+            "id": 3,
+            "name": "Patient C — 32F",
+            "complaint": "Abdominal pain, fever 39.2°C",
+            "esi": 3,
+            "color": "#eab308",
+            "label": "Urgent",
+            "time": "30 min"
+        },
+        {
+            "id": 4,
+            "name": "Patient D — 28M",
+            "complaint": "Ankle sprain, moderate swelling",
+            "esi": 4,
+            "color": "#22c55e",
+            "label": "Semi-urgent",
+            "time": "60 min"
+        },
+        {
+            "id": 5,
+            "name": "Patient E — 55F",
+            "complaint": "Prescription refill request",
+            "esi": 5,
+            "color": "#3b82f6",
+            "label": "Non-urgent",
+            "time": "120 min"
+        }
+    ]
+
+
+@router.get("/radiology/reports/latest")
+async def get_latest_radiology_report():
+    """
+    Get the most recent radiology report.
+
+    Returns:
+        Latest radiology report with findings, confidence scores, and recommendations
+
+    Note:
+        This is mock data for now. In production, would query from database.
+    """
+    return {
+        "patient": "Patient B — 45M",
+        "modality": "Chest X-Ray (PA)",
+        "findings": [
+            {
+                "text": "Bilateral infiltrates in lower lobes",
+                "confidence": 0.94,
+                "severity": "high"
+            },
+            {
+                "text": "Mild cardiomegaly noted",
+                "confidence": 0.87,
+                "severity": "moderate"
+            },
+            {
+                "text": "No pneumothorax identified",
+                "confidence": 0.96,
+                "severity": "normal"
+            },
+            {
+                "text": "Costophrenic angles blunted bilaterally",
+                "confidence": 0.82,
+                "severity": "moderate"
+            }
+        ],
+        "similarCases": 4,
+        "recommendation": "Correlate with CT for further evaluation. Suggest cardiology consult."
+    }
+
+
+@router.get("/monitoring/vitals/latest")
+async def get_latest_vitals():
+    """
+    Get the most recent vital signs for monitoring.
+
+    Returns:
+        Latest vital signs with heart rate, BP, SpO2, temperature, respiratory rate, and MEWS score
+
+    Note:
+        This is mock data for now. In production, would query from database or monitoring system.
+    """
+    return {
+        "hr": 88,
+        "bp": "132/84",
+        "spo2": 97,
+        "temp": 37.1,
+        "rr": 18,
+        "mews": 2
+    }

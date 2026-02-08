@@ -361,3 +361,224 @@ All specialist agents follow a consistent pattern:
 
 ---
 
+## 2026-02-08 - US-028: Integrate frontend React dashboard with backend API
+
+**What was implemented:**
+- Added 3 new GET endpoints to `backend/routers/agents.py`:
+  - `GET /agents/triage/queue` - Returns mock triage patient queue with ESI levels
+  - `GET /agents/radiology/reports/latest` - Returns latest radiology report with findings
+  - `GET /agents/monitoring/vitals/latest` - Returns latest vital signs with MEWS score
+- Created complete frontend directory structure at `frontend/`
+- Created `frontend/src/services/api.js` - Comprehensive API client with:
+  - Generic `fetchJSON()` wrapper with error handling
+  - Agent methods: `getAgents()`, `getAgent()`, `executeSkill()`
+  - SSE streaming: `chatWithAgent()` with onChunk/onError callbacks
+  - Domain methods: `getTriageQueue()`, `getLatestRadiologyReport()`, `getLatestVitals()`
+  - All POST endpoints: triage, radiology, pharmacy, monitoring, documentation, research
+- Created `frontend/src/components/MedAssistDashboard.jsx` - Fully integrated React dashboard:
+  - Replaced static mock data with API calls using `useState`/`useEffect` hooks
+  - Dashboard view fetches agents from `GET /agents` on mount
+  - Triage view fetches queue from `GET /agents/triage/queue` when activated
+  - Radiology view fetches report from `GET /agents/radiology/reports/latest` when activated
+  - Vitals view fetches vitals from `GET /agents/monitoring/vitals/latest` when activated
+  - Agent chat uses SSE streaming from `POST /agents/{id}/chat` with real-time chunk rendering
+  - Error handling: Shows red banner when backend unreachable, graceful error states in views
+  - Preserved all original UI design, colors, layout, and styling
+- Created frontend configuration files:
+  - `package.json` - React 18 + Vite 6 dependencies
+  - `vite.config.js` - Dev server with proxy to backend
+  - `index.html` - HTML template with root div
+  - `src/main.jsx` - App entry point with StrictMode
+  - `.env.example` - Configurable API base URL
+  - `README.md` - Comprehensive frontend documentation
+- Created `FRONTEND_INTEGRATION.md` - Full integration guide with architecture, data flow, troubleshooting
+
+**Files changed:**
+- `backend/routers/agents.py` (added 3 GET endpoints for queue data, +120 lines)
+- `frontend/src/services/api.js` (new, 281 lines)
+- `frontend/src/components/MedAssistDashboard.jsx` (new, 565 lines - migrated from root, integrated with API)
+- `frontend/package.json` (new)
+- `frontend/vite.config.js` (new)
+- `frontend/index.html` (new)
+- `frontend/src/main.jsx` (new)
+- `frontend/.env.example` (new)
+- `frontend/README.md` (new, comprehensive docs)
+- `FRONTEND_INTEGRATION.md` (new, 500+ line integration guide)
+- `medassist-agent-interface.jsx` → `medassist-agent-interface-ORIGINAL.jsx` (renamed, deprecated)
+
+**Learnings:**
+
+- **Pattern: React API Integration with Hooks** - Use `useEffect` with dependency array to fetch data on mount or view change:
+  ```javascript
+  useEffect(() => {
+    async function fetchData() {
+      try {
+        const data = await api.getAgents();
+        setAgents(data);
+      } catch (err) {
+        setError(err.message);
+      }
+    }
+    fetchData();
+  }, []); // Empty array = run once on mount
+  ```
+  For view-dependent fetches, use `[activeView]` as dependency.
+
+- **Pattern: SSE Streaming in React** - Parse Server-Sent Events using ReadableStream:
+  ```javascript
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() || "";
+    for (const line of lines) {
+      if (line.startsWith("data: ")) {
+        const chunk = line.slice(6);
+        onChunk(chunk); // Update UI with each chunk
+      }
+    }
+  }
+  ```
+  Accumulate chunks in state for real-time message rendering.
+
+- **Pattern: Configurable API Base URL** - Support multiple environment variable formats:
+  ```javascript
+  export const API_BASE_URL = import.meta.env?.VITE_API_BASE_URL ||  // Vite
+                              process.env.REACT_APP_API_BASE_URL ||   // CRA
+                              "http://localhost:8000";                 // Default
+  ```
+  This works across Vite, Create React App, and bare Node.js environments.
+
+- **Pattern: Centralized Error Handling** - Wrap fetch in try/catch, detect network errors:
+  ```javascript
+  if (error.message.includes("Failed to fetch") || error.message.includes("NetworkError")) {
+    throw new Error("Backend is unreachable. Please ensure the server is running at " + API_BASE_URL);
+  }
+  ```
+  Provide clear, actionable error messages for users.
+
+- **Pattern: Error State UI** - Show banner at top + status indicator in navbar:
+  ```javascript
+  const ErrorBanner = () => error && (
+    <div style={{ background: "#1a0505", border: "1px solid #ef444433" }}>
+      <span>⚠️ {error}</span>
+      <button onClick={() => setError(null)}>×</button>
+    </div>
+  );
+  ```
+  Make errors visible but dismissible. Update status dot color in navbar to reflect connection state.
+
+- **Pattern: Mock Data in Backend** - For endpoints that will query DB in production, return mock data now:
+  ```python
+  @router.get("/triage/queue")
+  async def get_triage_queue():
+      # Returns mock data (replace with DB query in production)
+      return [{"id": 1, "name": "Patient A", ...}, ...]
+  ```
+  Document with comments. This unblocks frontend development while DB schema is finalized.
+
+- **Pattern: Loading States** - Show "Loading..." while fetching, hide after data arrives:
+  ```javascript
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    setLoading(true);
+    const data = await api.getAgents();
+    setAgents(data);
+    setLoading(false);
+  }, []);
+  ```
+  Prevents showing empty/stale data during fetch.
+
+- **Pattern: Backend Property Mapping** - Backend returns `agent_id`, frontend expects `id`:
+  ```javascript
+  const mappedAgents = agentsData.map(agent => ({
+    ...agent,
+    id: agent.agent_id,  // Map backend field to frontend field
+    bg: getBgColor(agent.color),  // Add computed fields
+  }));
+  ```
+  Transform data at the API boundary to match UI expectations.
+
+- **Gotcha: SSE Stream Buffering** - SSE messages can arrive split across multiple reads. Always buffer and split by `\n`:
+  ```javascript
+  buffer += decoder.decode(value, { stream: true });
+  const lines = buffer.split("\n");
+  buffer = lines.pop() || "";  // Keep incomplete line in buffer
+  ```
+  Without buffering, you'll miss partial messages or incorrectly parse them.
+
+- **Gotcha: useEffect Dependency Arrays** - Missing dependencies cause stale closures:
+  ```javascript
+  // WRONG: selectedAgent not in deps, will reference old value
+  useEffect(() => {
+    console.log(selectedAgent.name);
+  }, []);
+
+  // RIGHT: Include all dependencies
+  useEffect(() => {
+    console.log(selectedAgent.name);
+  }, [selectedAgent]);
+  ```
+  Always include ALL values from outer scope used inside useEffect.
+
+- **Gotcha: Streaming State Updates** - When streaming chat, update last message instead of appending:
+  ```javascript
+  // Add placeholder message with streaming: true
+  setChatMessages(prev => [...prev, { text: "", streaming: true }]);
+
+  // Update last message text as chunks arrive
+  onChunk: (chunk) => {
+    fullResponse += chunk;
+    setChatMessages(prev => {
+      const updated = [...prev];
+      updated[updated.length - 1].text = fullResponse;
+      return updated;
+    });
+  }
+  ```
+  Don't append a new message for each chunk - that creates duplicates.
+
+- **Gotcha: Vite vs CRA Environment Variables** - Vite uses `VITE_` prefix, CRA uses `REACT_APP_`:
+  - Vite: `import.meta.env.VITE_API_BASE_URL`
+  - CRA: `process.env.REACT_APP_API_BASE_URL`
+
+  Support both for portability, or standardize on Vite (modern, faster).
+
+- **Design Choice: Vite Over Create React App** - Vite is faster (esbuild), simpler config, better HMR:
+  - Dev server starts in ~200ms vs CRA's ~10s
+  - Hot Module Replacement is instant
+  - Smaller bundle sizes
+  - Native ES modules support
+
+  CRA is deprecated; Vite is the modern standard.
+
+- **Design Choice: Inline Styles Over CSS Modules** - Preserved original inline styles for simplicity:
+  - No build step for CSS
+  - No class name conflicts
+  - Styles colocated with components
+  - Easy to theme via color props
+
+  For large-scale production, consider migrating to CSS-in-JS (styled-components) or Tailwind.
+
+- **Design Choice: Mock Data in GET Endpoints** - Queue/report/vitals endpoints return static mock data:
+  - Unblocks frontend development
+  - Provides realistic data structure for testing
+  - Easy to replace with DB queries later
+  - Documents expected schema
+
+  In production, replace with queries to PostgreSQL (triage queue, vitals) and Orthanc (radiology reports).
+
+- **Design Choice: SSE Over WebSockets for Chat** - SSE is simpler for unidirectional streaming:
+  - HTTP-based (no upgrade negotiation)
+  - Works with standard HTTP clients (curl, fetch)
+  - Automatic reconnection in browsers
+  - Sufficient for agent → user streaming
+
+  WebSockets only needed for bidirectional real-time (e.g., collaborative editing). SSE is perfect for chat.
+
+---
+
