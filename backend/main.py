@@ -15,6 +15,9 @@ from backend.models.medimageinsight import init_medimageinsight
 from backend.models.medgemma import init_medgemma
 from backend.agents.triage_agent import init_triage_agent
 from backend.agents.radiology_agent import init_radiology_agent
+from backend.agents.pharmacy_agent import init_pharmacy_agent
+from backend.integrations.rxnorm_client import init_rxnorm, close_rxnorm
+from backend.integrations.drugbank_client import init_drugbank, close_drugbank
 
 
 @asynccontextmanager
@@ -61,12 +64,24 @@ async def lifespan(app: FastAPI):
     else:
         print("   WARNING: ANTHROPIC_API_KEY not set - Radiology Agent will not be available")
 
+    # Initialize RxNorm and DrugBank clients
+    await init_rxnorm()
+    await init_drugbank()
+
+    # Initialize Pharmacy Agent
+    if settings.ANTHROPIC_API_KEY:
+        await init_pharmacy_agent(anthropic_api_key=settings.ANTHROPIC_API_KEY)
+    else:
+        print("   WARNING: ANTHROPIC_API_KEY not set - Pharmacy Agent will not be available")
+
     yield
 
     # Shutdown
     print("MedAssist AI Backend shutting down...")
     await close_db_pool()
     await close_qdrant()
+    await close_rxnorm()
+    await close_drugbank()
 
 
 # Initialize FastAPI app
