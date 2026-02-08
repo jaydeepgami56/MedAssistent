@@ -58,6 +58,16 @@ after each iteration and it's included in prompts for context.
 - **Health endpoint**: Simple status endpoint returning `{"status": "ok", "agents_online": N, "version": "X.Y"}`
 - **Running server**: `uvicorn backend.main:app --host 0.0.0.0 --port 8000` (from project root, not backend/ directory)
 
+### BaseAgent Abstract Class Pattern
+- **Location**: `backend/agents/base_agent.py` - All specialist agents inherit from this
+- **ABC enforcement**: Use `from abc import ABC, abstractmethod` and inherit from ABC to prevent direct instantiation
+- **Required properties**: agent_id (str), name (str), status (str, default "Active"), skills (list[str]), queue (int, default 0), models_used (list[str]), color (str, hex), icon (str)
+- **Abstract methods**: `async def execute_skill(skill_name: str, params: dict) -> dict` and `async def chat(message: str, context: dict) -> AsyncIterator[str]`
+- **Concrete methods**: `get_info() -> dict` (returns all metadata), `log_audit(request, model, confidence, action) -> None` (prints audit entry)
+- **Type hints**: Use modern Python 3.10+ syntax (list[str] instead of List[str], dict instead of Dict)
+- **Audit log format**: `[AUDIT] {timestamp} | Agent: {agent_id} | Request: {truncated_request} | Model: {model} | Confidence: {confidence:.3f} | Action: {action}`
+- **Testing pattern**: Verify ABC enforcement by attempting instantiation (should raise TypeError), then create concrete subclass to test functionality
+
 ---
 
 ## [2026-02-08] - US-001 - Install System Prerequisites
@@ -380,5 +390,39 @@ after each iteration and it's included in prompts for context.
   - US-010 will create PostgreSQL database schema and connection utility
   - US-011 will create Qdrant vector database client
   - Backend is now ready for agent implementations to be built on top
+---
+
+
+
+## [2026-02-08] - US-009 - Create BaseAgent abstract class
+- **Status**: COMPLETE - BaseAgent abstract class created and verified
+- **What was implemented**:
+  - Created backend/agents/base_agent.py with BaseAgent abstract class inheriting from ABC
+  - Implemented all required properties: agent_id, name, status, skills, queue, models_used, color, icon
+  - Implemented abstract methods: execute_skill() and chat() with proper type hints
+  - Implemented concrete methods: get_info() returning metadata dict, log_audit() printing audit entries
+  - Comprehensive docstrings for class, methods, and parameters
+- **Files created**:
+  - `backend/agents/base_agent.py` - Abstract base class for all specialist agents (164 lines)
+- **Acceptance Criteria Verification**:
+  - ✅ backend/agents/base_agent.py exists with BaseAgent abstract class
+  - ✅ BaseAgent has all required properties: agent_id, name, status (default "Active"), skills, queue (default 0), models_used, color, icon
+  - ✅ BaseAgent has abstract methods: execute_skill(skill_name: str, params: dict) -> dict, chat(message: str, context: dict) -> AsyncIterator[str]
+  - ✅ BaseAgent has concrete methods: get_info() returning all metadata as dict, log_audit(request, model, confidence, action) printing formatted audit entry
+  - ✅ BaseAgent uses ABC from abc module - verified cannot instantiate without implementing abstract methods
+- **Learnings**:
+  - **ABC Abstract Method Enforcement**: Python's ABC (Abstract Base Class) prevents instantiation of BaseAgent unless subclasses implement all @abstractmethod decorated methods (execute_skill and chat)
+  - **Type Hints**: Used modern Python type hints with list[str] syntax (Python 3.10+) instead of List[str] from typing module
+  - **AsyncIterator**: The chat() method returns AsyncIterator[str] for streaming responses token-by-token, enabling real-time chat UX
+  - **Default Parameters**: status and queue have sensible defaults ("Active" and 0) in __init__ to reduce boilerplate in subclasses
+  - **Audit Logging Pattern**: log_audit() is a concrete method (not abstract) with consistent format: timestamp, agent_id, request (truncated to 50 chars), model, confidence (3 decimals), action
+  - **get_info() Pattern**: Returns all agent properties as dict, ideal for FastAPI JSON responses and UI metadata display
+  - **Docstring Style**: Used Google-style docstrings with Args/Returns/Raises sections for clear API documentation
+  - **Testing Pattern**: Verified ABC enforcement by attempting instantiation (should fail with TypeError), then created concrete TestAgent subclass to verify all methods work correctly
+- **Next Steps**:
+  - US-010 will create PostgreSQL schema and connection utilities (agents will use for audit logging)
+  - US-011+ will create concrete agent implementations (TriageAgent, RadiologyAgent, etc.) inheriting from BaseAgent
+  - Each concrete agent will implement execute_skill() based on its SKILL.md definition
+  - Audit logging will be enhanced to write to PostgreSQL once database integration is complete
 ---
 
