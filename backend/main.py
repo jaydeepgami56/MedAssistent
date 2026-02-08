@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from backend.config import settings
+from backend.integrations.database import init_db, close_db_pool
 
 
 @asynccontextmanager
@@ -15,10 +16,9 @@ async def lifespan(app: FastAPI):
     """
     FastAPI lifespan context manager for startup and shutdown events.
 
-    This will be used later for:
-    - Initializing database connections
-    - Loading AI models
-    - Setting up Qdrant collections
+    Handles:
+    - Database connection pool creation and schema initialization
+    - Resource cleanup on shutdown
     """
     # Startup
     print("MedAssist AI Backend starting...")
@@ -28,10 +28,14 @@ async def lifespan(app: FastAPI):
     print(f"   Orthanc: {settings.ORTHANC_HOST}:{settings.ORTHANC_PORT}")
     print(f"   Neo4j: {settings.NEO4J_URI}")
 
+    # Initialize database schema
+    await init_db()
+
     yield
 
     # Shutdown
     print("MedAssist AI Backend shutting down...")
+    await close_db_pool()
 
 
 # Initialize FastAPI app

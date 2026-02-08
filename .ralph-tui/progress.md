@@ -68,6 +68,16 @@ after each iteration and it's included in prompts for context.
 - **Audit log format**: `[AUDIT] {timestamp} | Agent: {agent_id} | Request: {truncated_request} | Model: {model} | Confidence: {confidence:.3f} | Action: {action}`
 - **Testing pattern**: Verify ABC enforcement by attempting instantiation (should raise TypeError), then create concrete subclass to test functionality
 
+### PostgreSQL Database Integration Pattern
+- **Location**: `backend/integrations/database.py` - Database connection pool and schema management
+- **Connection pool**: Use `asyncpg.create_pool()` with global pool variable, create once on startup, reuse across requests
+- **Schema initialization**: Use `CREATE TABLE IF NOT EXISTS` for idempotent schema creation (safe to call multiple times)
+- **Data types**: SERIAL (auto-increment PK), TIMESTAMPTZ (timezone-aware timestamps), JSONB (structured JSON data), VARCHAR(N) (strings), INT, FLOAT, BOOLEAN
+- **Constraints**: PRIMARY KEY, FOREIGN KEY (REFERENCES table(column)), UNIQUE, CHECK (validation), DEFAULT (default values)
+- **Integration**: Call `init_db()` in FastAPI lifespan startup, `close_db_pool()` in shutdown
+- **Port conflicts**: On Windows, check for local PostgreSQL service on port 5432. Use `netstat -ano | grep 5432` to detect conflicts. Use different port for Docker (e.g., 5433:5432) if local PostgreSQL is running
+- **Troubleshooting**: If asyncpg authentication fails, check: (1) correct host/port, (2) no local PostgreSQL conflict, (3) password set correctly in Docker env vars, (4) pg_hba.conf authentication method
+
 ---
 
 ## [2026-02-08] - US-001 - Install System Prerequisites
@@ -426,3 +436,46 @@ after each iteration and it's included in prompts for context.
   - Audit logging will be enhanced to write to PostgreSQL once database integration is complete
 ---
 
+
+
+## [2026-02-08] - US-010 - Create PostgreSQL database schema and connection utility
+- **Status**: COMPLETE - Database integration layer created and verified
+- **What was implemented**:
+  - Created backend/integrations/database.py with async connection pool management using asyncpg
+  - Implemented get_db_pool() to create/reuse asyncpg connection pool with config from backend/config.py
+  - Implemented init_db() to create 4 tables with proper schema (audit_log, patients, triage_assessments, radiology_reports)
+  - Integrated database initialization into FastAPI lifespan startup event
+  - Added close_db_pool() for cleanup on shutdown
+  - Resolved port conflict between local PostgreSQL 18 and Docker PostgreSQL 16 by using port 5433 for Docker
+- **Files created/modified**:
+  - `backend/integrations/database.py` - Database connection pool and schema initialization (151 lines)
+  - `backend/main.py` - Added database initialization to lifespan startup/shutdown
+  - `backend/config.py` - Changed POSTGRES_PORT default from 5432 to 5433
+  - `infrastructure/docker-compose.yml` - Changed PostgreSQL port mapping from 5432:5432 to 5433:5432
+  - `.env` - Added POSTGRES_PASSWORD=dev-password
+- **Schema created**:
+  - `audit_log`: id (SERIAL PRIMARY KEY), timestamp (TIMESTAMPTZ DEFAULT NOW()), agent_id, skill_name, request_summary, model_used, confidence (FLOAT), clinician_action, clinician_id, response_time_ms (INT)
+  - `patients`: id (SERIAL PRIMARY KEY), external_id (UNIQUE), name, age, gender, medical_history (JSONB), allergies (JSONB), medications (JSONB), created_at (TIMESTAMPTZ DEFAULT NOW())
+  - `triage_assessments`: id (SERIAL PRIMARY KEY), patient_id (REFERENCES patients), esi_score (INT CHECK 1-5), red_flags (JSONB), routing, reasoning, confidence, clinician_override (BOOLEAN DEFAULT FALSE), created_at
+  - `radiology_reports`: id (SERIAL PRIMARY KEY), patient_id (REFERENCES patients), modality, findings (JSONB), similar_cases (JSONB), recommendation, overall_confidence, clinician_action, created_at
+- **Acceptance Criteria Verification**:
+  - ✅ backend/integrations/database.py exists with get_db_pool and init_db functions
+  - ✅ All 4 tables defined with correct column types (verified with \dt and \d commands in psql)
+  - ✅ Database connection uses config values from backend/config.py (POSTGRES_HOST, POSTGRES_PORT, POSTGRES_DB, POSTGRES_USER, POSTGRES_PASSWORD)
+  - ✅ init_db is called from FastAPI app lifespan startup event in main.py
+  - ✅ Connection pool is properly created on startup and closed on shutdown
+  - ✅ Tables are created successfully when backend starts (verified with backend startup test)
+- **Learnings**:
+  - **Port Conflict with Local PostgreSQL**: Windows had PostgreSQL 18 running as a service on port 5432, which conflicted with Docker PostgreSQL 16. asyncpg was connecting to the local instance instead of Docker, causing authentication failures. Solution: Changed Docker port mapping to 5433:5432 and updated config.
+  - **asyncpg Connection Pool**: Use asyncpg.create_pool() with min_size/max_size for connection pooling. Store pool in global variable and reuse across requests.
+  - **TIMESTAMPTZ vs TIMESTAMP**: Use TIMESTAMPTZ (timestamp with time zone) for all timestamp columns to ensure timezone-aware storage.
+  - **JSONB for Structured Data**: Use JSONB columns for semi-structured data like medical_history, allergies, findings, red_flags - allows flexible schema and queryable JSON.
+  - **Foreign Key Constraints**: Use REFERENCES to enforce referential integrity (patient_id references patients(id)).
+  - **CHECK Constraints**: Use CHECK constraints for data validation (e.g., esi_score between 1 and 5).
+  - **CREATE TABLE IF NOT EXISTS**: Makes init_db() idempotent - safe to call multiple times without errors.
+  - **Database Initialization Pattern**: Call init_db() in FastAPI lifespan startup, close pool in shutdown. This ensures database is ready before accepting requests.
+  - **PostgreSQL Docker Trust Authentication**: PostgreSQL Docker image uses "trust" authentication for Unix socket connections but scram-sha-256 for TCP/IP by default. The initial password wasn't being set correctly, but after resolving the port conflict, everything worked.
+- **Next Steps**:
+  - US-011 will create Qdrant vector database client for medical image embeddings
+  - Future agents will use database.py to log audit trails and store patient data
+  - Consider adding database migration tool (e.g., Alembic) for schema evolution in production

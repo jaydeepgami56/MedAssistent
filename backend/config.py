@@ -41,7 +41,7 @@ class Settings(BaseSettings):
 
     # PostgreSQL Database
     POSTGRES_HOST: str = "localhost"
-    POSTGRES_PORT: int = 5432
+    POSTGRES_PORT: int = 5433
     POSTGRES_DB: str = "medassist"
     POSTGRES_USER: str = "medassist"
     POSTGRES_PASSWORD: str = "dev-password"
