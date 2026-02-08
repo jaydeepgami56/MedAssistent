@@ -97,12 +97,13 @@
         "Skills copied to ~/.openclaw/workspace/skills/ and visible via openclaw skills list"
       ],
       "priority": 2,
-      "passes": false,
+      "passes": true,
       "notes": "",
       "dependsOn": [
         "US-002",
         "US-004"
-      ]
+      ],
+      "completionNotes": "Completed by agent"
     },
     {
       "id": "US-006",
@@ -596,6 +597,6 @@
     }
   ],
   "metadata": {
-    "updatedAt": "2026-02-08T04:54:21.450Z"
+    "updatedAt": "2026-02-08T05:02:34.278Z"
   }
 }

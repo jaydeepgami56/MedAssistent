@@ -174,3 +174,50 @@ after each iteration and it's included in prompts for context.
   - Backend Python files will be created in later user stories (US-007+)
 ---
 
+## [2026-02-08] - US-005 - Create all SKILL.md files and skill.json for every agent
+- **Status**: COMPLETE - All 7 SKILL.md and skill.json files created and deployed to OpenClaw workspace
+- **What was implemented**:
+  - Created SKILL.md files for all 7 specialist agents with complete skill definitions
+  - Created skill.json metadata files for all 7 agents
+  - Copied all skills to ~/.openclaw/workspace/skills/ directory
+  - Verified all acceptance criteria met
+- **Files created**:
+  - `skills/triage/SKILL.md` - Triage assessment with ESI 1-5 scoring, red flag checklist, ClinicalBERT+Claude
+  - `skills/triage/skill.json` - Triage agent metadata (name, version, agent)
+  - `skills/radiology/SKILL.md` - Medical image analysis with modality-specific zero-shot labels, MedImageInsight+MedGemma
+  - `skills/radiology/skill.json` - Radiology agent metadata
+  - `skills/diagnostic/SKILL.md` - Differential diagnosis with test recommendations, MedGemma 27B+Claude
+  - `skills/diagnostic/skill.json` - Diagnostic agent metadata
+  - `skills/pharmacy/SKILL.md` - Drug interaction check with severity classification (Critical/Major/Moderate/Minor), RxNorm+DrugBank
+  - `skills/pharmacy/skill.json` - Pharmacy agent metadata
+  - `skills/monitoring/SKILL.md` - Vital sign monitoring with MEWS calculation formula, time-series ML
+  - `skills/monitoring/skill.json` - Monitoring agent metadata
+  - `skills/documentation/SKILL.md` - Clinical documentation with SOAP format (Subjective/Objective/Assessment/Plan), Claude API
+  - `skills/documentation/skill.json` - Documentation agent metadata
+  - `skills/research/SKILL.md` - Clinical evidence search with PubMed API process, Claude+PubMed
+  - `skills/research/skill.json` - Research agent metadata
+  - Copied all 14 files to `~/.openclaw/workspace/skills/` directory
+- **Acceptance Criteria Verification**:
+  - ✅ skills/triage/SKILL.md exists with triage assessment skill including ESI 1-5 scoring process and red flag checklist (Cardiac, Respiratory, Neurological, Trauma, Other)
+  - ✅ skills/radiology/SKILL.md exists with medical image analysis skill including modality-specific zero-shot label sets (Chest X-ray, Brain MRI, Chest CT, Musculoskeletal, Dermatology)
+  - ✅ skills/diagnostic/SKILL.md exists with differential diagnosis skill including test recommendations and pattern recognition
+  - ✅ skills/pharmacy/SKILL.md exists with drug interaction check skill including severity classification (Critical/Major/Moderate/Minor)
+  - ✅ skills/monitoring/SKILL.md exists with vital sign monitoring skill including MEWS calculation formula
+  - ✅ skills/documentation/SKILL.md exists with clinical documentation skill including SOAP format
+  - ✅ skills/research/SKILL.md exists with clinical evidence skill including PubMed search process
+  - ✅ All 7 skill.json files exist with name, version (1.0), and agent fields
+  - ✅ Skills copied to ~/.openclaw/workspace/skills/ and verified with directory listing (14 files total)
+- **Learnings**:
+  - **SKILL.md Structure**: All SKILL.md files follow consistent format: # Skill Name, ## When to Use (triggers), ## Process (numbered steps), ## Models Used, ## A2UI Output Format, ## Safety Rules, ## Example (input/output)
+  - **skill.json Metadata**: Simple JSON structure with 3 required fields: name, version, agent
+  - **OpenClaw Skills Registry**: The `openclaw skills list` command shows bundled OpenClaw skills, not custom workspace skills. Custom skills in `~/.openclaw/workspace/skills/` are available for agents to use but don't appear in the global skills list
+  - **Skills Directory Pattern**: Each agent has its own subdirectory under skills/ with both SKILL.md (human-readable definition) and skill.json (machine-readable metadata)
+  - **Safety-First Design**: Every SKILL.md includes comprehensive safety rules with ALWAYS/NEVER directives, human-in-the-loop requirements, and escalation thresholds
+  - **A2UI Integration**: All skills define A2UI output format for rendering results on Canvas (triage cards, radiology reports, drug alerts, vitals dashboard, SOAP editor, evidence panel)
+  - **Model Diversity**: Skills use different AI models based on task requirements: ClinicalBERT (NER), MedImageInsight (imaging), MedGemma 4B/27B (clinical reasoning), Claude API (complex reasoning), time-series ML (vitals)
+- **Next Steps**:
+  - US-006 will create A2UI JSONL templates in a2ui/templates/
+  - Backend Python implementation will wire up these skills to actual AI models
+  - Agent configuration in OpenClaw will reference these SKILL.md files for execution logic
+---
+
