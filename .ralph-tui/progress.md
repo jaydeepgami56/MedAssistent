@@ -45,6 +45,19 @@ after each iteration and it's included in prompts for context.
 - **Connectivity testing**: Use `curl` for HTTP services, `docker exec` for database CLIs
 - **Docker Desktop**: On Windows, Docker Desktop must be running. Start with `"/c/Program Files/Docker/Docker/Docker Desktop.exe" &` and wait ~10s
 
+### FastAPI Backend Pattern
+- **Virtual environment**: Use `python -m venv .venv` for virtual environment creation (standard library, works on all platforms)
+- **Activation**: Windows: `.venv/Scripts/activate`, Unix: `source .venv/bin/activate`
+- **Dependencies**: Install with `pip install -r backend/requirements.txt`
+- **Pydantic Settings**: Use `pydantic_settings.BaseSettings` with `env_file=".env"` to load environment variables
+- **Extra env vars**: Set `extra = "ignore"` in Config class to allow .env to contain more variables than defined in Settings
+- **Optional fields**: Use `Optional[str] = None` for env vars that aren't required at startup (API keys can be added later)
+- **FastAPI lifespan**: Use `@asynccontextmanager` for startup/shutdown events (replaces deprecated `@app.on_event`)
+- **CORS for dev**: Use `allow_origins=["*"]` for development, restrict to specific origins in production
+- **Console output**: Avoid Unicode emojis in print() on Windows (cp1252 encoding issues), use plain text or ASCII art
+- **Health endpoint**: Simple status endpoint returning `{"status": "ok", "agents_online": N, "version": "X.Y"}`
+- **Running server**: `uvicorn backend.main:app --host 0.0.0.0 --port 8000` (from project root, not backend/ directory)
+
 ---
 
 ## [2026-02-08] - US-001 - Install System Prerequisites
@@ -322,5 +335,50 @@ after each iteration and it's included in prompts for context.
   - Update .env file with actual database connection strings: `POSTGRES_HOST=localhost`, `QDRANT_HOST=localhost`, `ORTHANC_HOST=localhost`, `NEO4J_URI=bolt://localhost:7687`
   - Backend Python code will connect to these services using credentials from .env
   - US-008+ will implement backend agents that use these data services
+---
+
+
+## [2026-02-08] - US-008 - Create FastAPI backend with config, dependencies, and health endpoint
+- **Status**: COMPLETE - FastAPI backend foundation created and verified
+- **What was implemented**:
+  - Created backend/requirements.txt with all required dependencies (fastapi, uvicorn, pydantic-settings, anthropic, qdrant-client, asyncpg, sqlalchemy, transformers, torch, Pillow, python-multipart, pytest, pytest-asyncio)
+  - Created Python virtual environment in .venv/ and installed all dependencies
+  - Created backend/config.py using pydantic-settings BaseSettings with all env vars and sensible defaults
+  - Created backend/main.py with FastAPI app, CORS middleware, lifespan context manager, and GET /health endpoint
+  - Created __init__.py files in backend/, backend/agents/, backend/models/, backend/integrations/, backend/tests/
+- **Files created**:
+  - `backend/requirements.txt` - All Python dependencies for the backend
+  - `backend/config.py` - Settings class loading env vars with defaults
+  - `backend/main.py` - FastAPI app with CORS and /health endpoint
+  - `backend/__init__.py` - Package marker for backend
+  - `backend/agents/__init__.py` - Package marker for agents module
+  - `backend/models/__init__.py` - Package marker for models module
+  - `backend/integrations/__init__.py` - Package marker for integrations module
+  - `backend/tests/__init__.py` - Package marker for tests module
+  - `.venv/` - Python virtual environment with all dependencies
+- **Acceptance Criteria Verification**:
+  - ✅ backend/requirements.txt exists with all listed dependencies including pytest
+  - ✅ Python virtual environment created in .venv/ and dependencies installed (verified with pip list)
+  - ✅ backend/config.py exists using pydantic-settings BaseSettings loading all env vars with sensible defaults
+  - ✅ backend/main.py exists with FastAPI app, CORS middleware, and GET /health endpoint
+  - ✅ GET /health returns JSON {"status": "ok", "agents_online": 7, "version": "2.0"}
+  - ✅ backend/agents/__init__.py, backend/models/__init__.py, backend/integrations/__init__.py, backend/tests/__init__.py all exist
+  - ✅ uvicorn starts successfully on port 8000 (verified with curl http://localhost:8000/health)
+- **Learnings**:
+  - **Pydantic Settings Extra Fields**: By default, pydantic-settings will reject extra env vars not defined in the Settings class. Use `extra = "ignore"` in the Config class to allow extra env vars in .env file (useful when .env has more vars than currently needed)
+  - **Windows Console Encoding**: Windows console (cp1252) can't handle Unicode emojis in print() statements. Avoid emojis in console output or use ASCII-safe alternatives
+  - **Optional ANTHROPIC_API_KEY**: Made ANTHROPIC_API_KEY optional in config so backend can start without API key for foundation testing. Later agent implementations will require it
+  - **FastAPI Lifespan**: Used @asynccontextmanager for lifespan events instead of deprecated @app.on_event("startup"). This is the recommended pattern in FastAPI 0.128+
+  - **Virtual Environment Creation**: Used `python -m venv .venv` (standard library) instead of virtualenv. Works reliably on Windows and Unix
+  - **Torch Installation**: torch installed successfully (CPU version) without specifying CUDA version. For GPU support, would need to specify index URL for CUDA builds
+  - **Package Installation Time**: Initial pip install of all dependencies took ~3 minutes (torch is large at ~150MB). Subsequent installs will be much faster due to pip cache
+  - **Health Endpoint Design**: Simple health endpoint returns static data (agents_online: 7) for now. Later iterations will query actual agent status from registry
+  - **CORS Configuration**: Allowed all origins (`allow_origins=["*"]`) for development. In production, should restrict to specific frontend origins
+- **Next Steps**:
+  - User should fill in ANTHROPIC_API_KEY in .env file (required for agent implementations in US-009+)
+  - US-009 will create BaseAgent abstract class
+  - US-010 will create PostgreSQL database schema and connection utility
+  - US-011 will create Qdrant vector database client
+  - Backend is now ready for agent implementations to be built on top
 ---
 

@@ -165,11 +165,12 @@
         "uvicorn starts successfully on port 8000"
       ],
       "priority": 3,
-      "passes": false,
+      "passes": true,
       "notes": "torch installation may require specific CUDA version for GPU support. CPU-only is fine for MVP.",
       "dependsOn": [
         "US-004"
-      ]
+      ],
+      "completionNotes": "Completed by agent"
     },
     {
       "id": "US-009",
@@ -599,6 +600,6 @@
     }
   ],
   "metadata": {
-    "updatedAt": "2026-02-08T05:19:33.784Z"
+    "updatedAt": "2026-02-08T05:31:10.401Z"
   }
 }

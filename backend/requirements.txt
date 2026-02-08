@@ -1,0 +1,29 @@
+# FastAPI and server
+fastapi
+uvicorn[standard]
+
+# Environment and configuration
+python-dotenv
+pydantic
+pydantic-settings
+
+# HTTP client
+httpx
+
+# AI/ML providers
+anthropic
+qdrant-client
+transformers
+torch
+Pillow
+
+# Database
+asyncpg
+sqlalchemy[asyncio]
+
+# File uploads
+python-multipart
+
+# Testing
+pytest
+pytest-asyncio
