@@ -12,6 +12,7 @@ from backend.integrations.database import init_db, close_db_pool
 from backend.integrations.qdrant_client import init_qdrant, close_qdrant
 from backend.models.clinical_bert import init_clinical_bert
 from backend.models.medimageinsight import init_medimageinsight
+from backend.models.medgemma import init_medgemma
 
 
 @asynccontextmanager
@@ -42,6 +43,9 @@ async def lifespan(app: FastAPI):
 
     # Initialize MedImageInsight service
     init_medimageinsight(model_dir=settings.MEDIMAGEINSIGHT_MODEL_DIR)
+
+    # Initialize MedGemma service
+    init_medgemma(anthropic_api_key=settings.ANTHROPIC_API_KEY, model_dir=None)
 
     yield
 
