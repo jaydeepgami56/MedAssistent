@@ -10,6 +10,7 @@ from contextlib import asynccontextmanager
 from backend.config import settings
 from backend.integrations.database import init_db, close_db_pool
 from backend.integrations.qdrant_client import init_qdrant, close_qdrant
+from backend.models.clinical_bert import init_clinical_bert
 
 
 @asynccontextmanager
@@ -34,6 +35,9 @@ async def lifespan(app: FastAPI):
 
     # Initialize Qdrant vector database
     await init_qdrant()
+
+    # Initialize ClinicalBERT service
+    init_clinical_bert(anthropic_api_key=settings.ANTHROPIC_API_KEY)
 
     yield
 
