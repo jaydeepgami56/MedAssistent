@@ -13,6 +13,7 @@ from backend.integrations.qdrant_client import init_qdrant, close_qdrant
 from backend.models.clinical_bert import init_clinical_bert
 from backend.models.medimageinsight import init_medimageinsight
 from backend.models.medgemma import init_medgemma
+from backend.agents.triage_agent import init_triage_agent
 
 
 @asynccontextmanager
@@ -46,6 +47,12 @@ async def lifespan(app: FastAPI):
 
     # Initialize MedGemma service
     init_medgemma(anthropic_api_key=settings.ANTHROPIC_API_KEY, model_dir=None)
+
+    # Initialize Triage Agent
+    if settings.ANTHROPIC_API_KEY:
+        init_triage_agent(anthropic_api_key=settings.ANTHROPIC_API_KEY)
+    else:
+        print("   WARNING: ANTHROPIC_API_KEY not set - Triage Agent will not be available")
 
     yield
 

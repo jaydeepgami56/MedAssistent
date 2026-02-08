@@ -126,6 +126,21 @@ after each iteration and it's included in prompts for context.
 - **Singleton pattern**: Global `_medgemma_service` with `init_medgemma(anthropic_api_key, model_dir, device)` and `get_medgemma_service()`
 - **Integration**: Call `init_medgemma(settings.ANTHROPIC_API_KEY, model_dir=None)` in FastAPI lifespan startup, after MedImageInsight
 
+### Specialist Agent Implementation Pattern (Triage Agent)
+- **Location**: `backend/agents/{agent_name}_agent.py` - One file per specialist agent (triage, radiology, diagnostic, etc.)
+- **Class structure**: Inherit from BaseAgent, implement execute_skill() and chat() abstract methods
+- **Agent metadata**: Set agent_id, name, skills (list), models_used (list), color (hex), icon (emoji/text) in __init__
+- **Multi-skill pattern**: execute_skill() dispatches to private methods (_skill_name) based on skill_name parameter. Validate skill_name in self.skills list.
+- **Claude API for reasoning**: Use anthropic.messages.create() for structured JSON responses, anthropic.messages.stream() for streaming chat. Include structured prompts with context, criteria, constraints.
+- **Entity extraction**: Use ClinicalBERT service (get_clinical_bert_service()) for extracting symptoms, conditions, medications from text. Graceful fallback if unavailable.
+- **Red flag/safety checks**: Implement domain-specific safety checks (e.g., red flags for triage, drug interactions for pharmacy). Use keyword matching + thresholds.
+- **Mandatory disclaimer**: ALL outputs must include disclaimer string (e.g., "AI-assisted triage — requires clinician verification"). Add to every skill result dict.
+- **Audit logging**: Call self.log_audit() for all skill executions with request, model, confidence, action. Important for HIPAA compliance and debugging.
+- **Streaming chat**: Use async for token in self.anthropic_client.messages.stream() to yield tokens. Include agent-specific system prompt with role, constraints, context.
+- **Singleton pattern**: Global agent instance with init_agent() and get_agent() functions. Initialize in FastAPI lifespan startup with API key check.
+- **Testing pattern**: Create comprehensive test suite with 10-15 test cases covering initialization, metadata, skill execution, edge cases, error handling, chat streaming.
+- **Example script**: Create standalone example script demonstrating 5-7 usage scenarios with realistic clinical data. Helps documentation and manual testing.
+
 ---
 
 ## [2026-02-08] - US-001 - Install System Prerequisites
@@ -692,5 +707,49 @@ after each iteration and it's included in prompts for context.
   - generate_report() will be called after MedImageInsight classification to create structured narratives
   - clinical_reasoning() will be used for differential diagnosis and clinical decision support
   - Future: Implement MedGemma 27B integration for complex clinical reasoning tasks
+---
+
+
+## [2026-02-08] - US-015 - Implement Triage Agent with ESI scoring
+- **Status**: COMPLETE - Triage Agent fully implemented with all acceptance criteria met
+- **What was implemented**:
+  - Created TriageAgent class inheriting from BaseAgent with agent_id="triage", icon="🚨", color="#ef4444"
+  - Implemented esi_scoring skill with comprehensive red flag detection and Claude API reasoning
+  - Implemented red_flag_detection, patient_routing, and emergency_alert skills
+  - Integrated ClinicalBERT for medical entity extraction (symptoms, conditions, medications, allergies, anatomical locations, temporal indicators)
+  - Implemented streaming chat method with triage-specific system prompt
+  - Added Triage Agent initialization to FastAPI lifespan startup in backend/main.py
+  - Created comprehensive test suite with 15 test cases covering all skills and scenarios
+  - Created example script demonstrating 7 usage scenarios (ESI-1 through ESI-5 cases)
+- **Files created**:
+  - `backend/agents/triage_agent.py` - Complete Triage Agent implementation (487 lines)
+  - `backend/tests/test_triage_agent.py` - Comprehensive test suite (377 lines, 15 tests)
+  - `backend/agents/triage_agent_example.py` - Usage examples (299 lines, 7 scenarios)
+  - `backend/agents/TRIAGE_AGENT_VERIFICATION.md` - Acceptance criteria verification
+- **Files modified**:
+  - `backend/main.py` - Added init_triage_agent() to lifespan startup with ANTHROPIC_API_KEY check
+- **Acceptance Criteria Verification**:
+  - ✅ backend/agents/triage_agent.py exists inheriting from BaseAgent
+  - ✅ esi_scoring skill returns esi_score (1-5), esi_label, red_flags[], routing, wait_time, reasoning, confidence
+  - ✅ Red flag detection covers cardiac, respiratory, neurological, trauma, and other categories (15+ keywords per category)
+  - ✅ Any detected red flag forces minimum ESI-2 (enforced in _claude_esi_determination method)
+  - ✅ Claude API called for ESI determination with full clinical context (complaint, vitals, history, entities, red flags, ESI criteria)
+  - ✅ chat method provides streaming responses with triage-specific system prompt and disclaimer
+  - ✅ All outputs include disclaimer: "AI-assisted triage — requires clinician verification"
+- **Learnings**:
+  - **ESI Scoring with Red Flags**: Implemented two-phase ESI determination: (1) Detect red flags using keyword matching and vital sign thresholds, (2) Use Claude API for clinical reasoning with minimum ESI constraint. If red flags present, minimum_esi=2 prevents downgrading.
+  - **Red Flag Detection Logic**: Comprehensive red flag detection covering 5 categories: cardiac (chest pain, syncope), respiratory (dyspnea, SpO2<90%), neurological (altered consciousness, GCS<9), trauma (hemorrhage, burns), other (anaphylaxis, sepsis). Also checks vital sign thresholds (HR, BP, temp, RR) and severe pain (≥8/10).
+  - **Claude API for Clinical Reasoning**: Used structured prompt with patient information, red flags, ESI criteria, and constraints. Claude returns JSON with esi_score, esi_label, routing, wait_time, reasoning, confidence. This pattern works well for clinical decision support tasks.
+  - **Entity Extraction Integration**: ClinicalBERT service extracts symptoms, conditions, medications, allergies, anatomical locations, and temporal indicators from clinical text. These entities inform red flag detection and ESI reasoning. Graceful fallback if service unavailable.
+  - **Multi-Skill Agent Pattern**: Implemented 4 skills: esi_scoring (main skill), red_flag_detection (standalone), patient_routing (routing logic), emergency_alert (ESI 1-2 alerts). The execute_skill method dispatches to private methods (_esi_scoring, _red_flag_detection, etc.).
+  - **Safety-First Design**: All outputs include mandatory disclaimer. Red flags always force minimum ESI-2. ESI 1-2 cases trigger emergency alerts with role notifications (Attending Physician, Charge Nurse, specialty consults). Fail-safe UP, never DOWN.
+  - **Streaming Chat with System Prompt**: Chat method uses anthropic.messages.stream() for token-by-token streaming. Triage-specific system prompt defines role, constraints, and context. Disclaimer automatically appended at end of stream.
+  - **Audit Logging**: All esi_scoring executions logged with log_audit() showing request, model, confidence, and action. Consistent with BaseAgent pattern for HIPAA compliance.
+  - **Testing Pattern**: Created 15 test cases covering initialization, skill execution, red flag detection (cardiac/respiratory/neurological), ESI scoring (critical/urgent/non-urgent), routing, alerts, and chat. Tests skip if ANTHROPIC_API_KEY not set (dev/CI friendly).
+- **Next Steps**:
+  - Radiology Agent (future US) will use similar multi-skill pattern with MedImageInsight and MedGemma
+  - Diagnostic Agent will use clinical reasoning with differential diagnosis
+  - Pharmacy Agent will implement drug interaction checking
+  - FastAPI endpoints will be added to expose agent skills via REST API
 ---
 
