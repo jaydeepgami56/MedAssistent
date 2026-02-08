@@ -13,13 +13,14 @@ from backend.integrations.qdrant_client import init_qdrant, close_qdrant
 from backend.models.clinical_bert import init_clinical_bert
 from backend.models.medimageinsight import init_medimageinsight
 from backend.models.medgemma import init_medgemma
-from backend.agents.triage_agent import init_triage_agent
-from backend.agents.radiology_agent import init_radiology_agent
-from backend.agents.diagnostic_agent import init_diagnostic_agent
-from backend.agents.pharmacy_agent import init_pharmacy_agent
-from backend.agents.monitoring_agent import init_monitoring_agent
-from backend.agents.documentation_agent import init_documentation_agent
-from backend.agents.research_agent import init_research_agent
+from backend.agents.triage_agent import init_triage_agent, get_triage_agent
+from backend.agents.radiology_agent import init_radiology_agent, get_radiology_agent
+from backend.agents.diagnostic_agent import init_diagnostic_agent, get_diagnostic_agent
+from backend.agents.pharmacy_agent import init_pharmacy_agent, get_pharmacy_agent
+from backend.agents.monitoring_agent import init_monitoring_agent, get_monitoring_agent
+from backend.agents.documentation_agent import init_documentation_agent, get_documentation_agent
+from backend.agents.research_agent import init_research_agent, get_research_agent
+from backend.agents.coordinator_agent import init_coordinator_agent, get_coordinator_agent
 from backend.integrations.rxnorm_client import init_rxnorm, close_rxnorm
 from backend.integrations.drugbank_client import init_drugbank, close_drugbank
 from backend.integrations.pubmed_client import init_pubmed, close_pubmed
@@ -103,6 +104,46 @@ async def lifespan(app: FastAPI):
         init_diagnostic_agent(anthropic_api_key=settings.ANTHROPIC_API_KEY)
     else:
         print("   WARNING: ANTHROPIC_API_KEY not set - Diagnostic Agent will not be available")
+
+    # Initialize Coordinator Agent
+    if settings.ANTHROPIC_API_KEY:
+        init_coordinator_agent(anthropic_api_key=settings.ANTHROPIC_API_KEY)
+    else:
+        print("   WARNING: ANTHROPIC_API_KEY not set - Coordinator Agent will not be available")
+
+    # Register all specialist agents with the coordinator
+    coordinator = get_coordinator_agent()
+    if coordinator:
+        # Register each specialist agent for routing
+        triage = get_triage_agent()
+        if triage:
+            coordinator.register_specialist("triage", triage)
+
+        radiology = get_radiology_agent()
+        if radiology:
+            coordinator.register_specialist("radiology", radiology)
+
+        diagnostic = get_diagnostic_agent()
+        if diagnostic:
+            coordinator.register_specialist("diagnostic", diagnostic)
+
+        pharmacy = get_pharmacy_agent()
+        if pharmacy:
+            coordinator.register_specialist("pharmacy", pharmacy)
+
+        monitoring = get_monitoring_agent()
+        if monitoring:
+            coordinator.register_specialist("monitoring", monitoring)
+
+        documentation = get_documentation_agent()
+        if documentation:
+            coordinator.register_specialist("documentation", documentation)
+
+        research = get_research_agent()
+        if research:
+            coordinator.register_specialist("research", research)
+
+        print(f"   Coordinator Agent registered {len(coordinator.specialist_agents)} specialists")
 
     yield
 
