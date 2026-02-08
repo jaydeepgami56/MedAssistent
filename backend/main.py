@@ -9,6 +9,7 @@ from contextlib import asynccontextmanager
 
 from backend.config import settings
 from backend.integrations.database import init_db, close_db_pool
+from backend.integrations.qdrant_client import init_qdrant, close_qdrant
 
 
 @asynccontextmanager
@@ -31,11 +32,15 @@ async def lifespan(app: FastAPI):
     # Initialize database schema
     await init_db()
 
+    # Initialize Qdrant vector database
+    await init_qdrant()
+
     yield
 
     # Shutdown
     print("MedAssist AI Backend shutting down...")
     await close_db_pool()
+    await close_qdrant()
 
 
 # Initialize FastAPI app

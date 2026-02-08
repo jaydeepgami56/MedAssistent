@@ -78,6 +78,18 @@ after each iteration and it's included in prompts for context.
 - **Port conflicts**: On Windows, check for local PostgreSQL service on port 5432. Use `netstat -ano | grep 5432` to detect conflicts. Use different port for Docker (e.g., 5433:5432) if local PostgreSQL is running
 - **Troubleshooting**: If asyncpg authentication fails, check: (1) correct host/port, (2) no local PostgreSQL conflict, (3) password set correctly in Docker env vars, (4) pg_hba.conf authentication method
 
+### Qdrant Vector Database Integration Pattern
+- **Location**: `backend/integrations/qdrant_client.py` - Vector database client for medical image embeddings
+- **QdrantService class**: Wrapper around qdrant_client.QdrantClient with create_collection, upsert_embedding, search_similar methods
+- **Point IDs**: Qdrant requires UUIDs or unsigned integers, NOT arbitrary strings. Use `uuid.uuid5(uuid.NAMESPACE_DNS, string_id)` for deterministic UUID generation
+- **Original ID storage**: Store original string ID in payload with "_original_id" key, filter out underscore-prefixed fields when returning results
+- **Collection creation**: Use `Distance.COSINE` for image embeddings. Check if collection exists first with `get_collections()` for idempotency
+- **Query API**: Use `client.query_points(collection_name, query, limit)` not `search()`. Results are in `response.points` attribute
+- **Singleton pattern**: Global `_qdrant_service` variable with `init_qdrant()`, `close_qdrant()`, and `get_qdrant_service()` functions
+- **Integration**: Call `init_qdrant()` in FastAPI lifespan startup (after database), `close_qdrant()` in shutdown
+- **Graceful degradation**: Catch exceptions in `init_qdrant()` and print warnings rather than crashing (allows backend to start without Qdrant)
+- **MedImageInsight embeddings**: Default embedding dimension is 512, use cosine distance for semantic similarity
+
 ---
 
 ## [2026-02-08] - US-001 - Install System Prerequisites
@@ -479,3 +491,42 @@ after each iteration and it's included in prompts for context.
   - US-011 will create Qdrant vector database client for medical image embeddings
   - Future agents will use database.py to log audit trails and store patient data
   - Consider adding database migration tool (e.g., Alembic) for schema evolution in production
+
+
+## [2026-02-08] - US-011 - Create Qdrant vector database client
+- **Status**: COMPLETE - Qdrant client created and verified
+- **What was implemented**:
+  - Created backend/integrations/qdrant_client.py with QdrantService class
+  - Implemented create_collection() method with cosine distance metric
+  - Implemented upsert_embedding() method with UUID conversion and metadata storage
+  - Implemented search_similar() method using query_points API
+  - Integrated QdrantService singleton pattern with init_qdrant() and close_qdrant()
+  - Added Qdrant initialization to FastAPI lifespan startup/shutdown
+  - Created medical_images collection (512-dimensional vectors) on startup
+  - Created comprehensive test suite in backend/tests/test_qdrant_client.py
+- **Files created/modified**:
+  - `backend/integrations/qdrant_client.py` - QdrantService class with all methods (234 lines)
+  - `backend/main.py` - Added init_qdrant() and close_qdrant() to lifespan events
+  - `backend/tests/test_qdrant_client.py` - 4 test cases (all passing)
+- **Acceptance Criteria Verification**:
+  - ✅ backend/integrations/qdrant_client.py exists with QdrantService class
+  - ✅ create_collection method creates collection with cosine distance metric (verified with Qdrant API)
+  - ✅ upsert_embedding method stores vector with metadata payload (UUID conversion + original ID storage)
+  - ✅ search_similar method returns top_k results with id, score, and payload (using query_points API)
+  - ✅ QdrantService is initialized from config during FastAPI startup (singleton pattern)
+  - ✅ medical_images collection created on startup when Qdrant is running (512 dims, cosine distance)
+- **Learnings**:
+  - **Qdrant Point IDs**: Qdrant requires point IDs to be either unsigned integers or UUIDs, NOT arbitrary strings. Solution: Convert string IDs to UUIDs using uuid.uuid5() with namespace hashing, and store original ID in payload with "_original_id" key for retrieval
+  - **Qdrant Query API**: The search method is called `query_points()` not `search()`. It returns a response object with `points` attribute containing the actual results
+  - **UUID Conversion Pattern**: For predictable UUID generation from strings, use `uuid.uuid5(uuid.NAMESPACE_DNS, string_id)` which creates deterministic UUIDs based on the string value
+  - **Internal Metadata Fields**: Use underscore prefix (e.g., "_original_id") for internal metadata fields, and filter them out when returning results to users
+  - **Collection Creation Idempotency**: create_collection() should check if collection exists first using `get_collections()` and handle "already exists" errors gracefully
+  - **Singleton Pattern for Services**: Use global variable with init/close functions (init_qdrant, close_qdrant) and getter (get_qdrant_service) for singleton pattern in FastAPI
+  - **MedImageInsight Embedding Dimension**: MedImageInsight produces 512-dimensional embeddings by default, which matches the medical_images collection configuration
+  - **Cosine Distance**: Cosine distance is ideal for image embeddings as it measures semantic similarity regardless of vector magnitude
+  - **Graceful Degradation**: init_qdrant() catches exceptions and prints warnings rather than crashing the backend, allowing the app to start even if Qdrant is temporarily unavailable
+- **Next Steps**:
+  - Radiology Agent (future US) will use QdrantService to store MedImageInsight embeddings
+  - Each medical image analysis will call upsert_embedding() to store the embedding with metadata (patient_id, modality, findings, confidence)
+  - KNN evidence retrieval will use search_similar() to find similar historical cases
+---
