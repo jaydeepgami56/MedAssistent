@@ -34,6 +34,17 @@ after each iteration and it's included in prompts for context.
 - **Validation**: `python -c "import json; [json.loads(line) for line in open('file.jsonl', encoding='utf-8')]"`
 - **Push to Canvas**: `openclaw nodes canvas a2ui push --jsonl <file>.jsonl --node <node-id>`
 
+### Docker Compose Services Pattern
+- **Configuration file**: `infrastructure/docker-compose.yml` - DO NOT include `version` field (obsolete in Compose v2+)
+- **Service naming**: Use explicit `container_name` for easier management (e.g., `medassist-postgres`)
+- **Volume naming**: Docker auto-prefixes volumes with directory name (e.g., `infrastructure_pgdata`)
+- **Health checks**: Always include health checks for all services (pg_isready, wget to HTTP endpoints)
+- **Restart policy**: Use `restart: unless-stopped` for automatic restart on system reboot
+- **Starting services**: `cd infrastructure && docker compose up -d` (detached mode)
+- **Service status**: `docker compose ps` shows all services, `docker compose logs <service>` shows logs
+- **Connectivity testing**: Use `curl` for HTTP services, `docker exec` for database CLIs
+- **Docker Desktop**: On Windows, Docker Desktop must be running. Start with `"/c/Program Files/Docker/Docker/Docker Desktop.exe" &` and wait ~10s
+
 ---
 
 ## [2026-02-08] - US-001 - Install System Prerequisites
@@ -268,5 +279,48 @@ after each iteration and it's included in prompts for context.
   - To test template push: User needs to create/pair an OpenClaw node, then run `openclaw nodes canvas a2ui push --jsonl a2ui/templates/triage-dashboard.jsonl --node <node-id>`
   - Backend Python code will eventually populate these templates with real data using `dataModelUpdate` messages
   - Templates are now ready for integration with agent SKILL.md output formats
+---
+
+
+## [2026-02-08] - US-007 - Create Docker Compose and start local development services
+- **Status**: COMPLETE - All 4 data services running successfully
+- **What was implemented**:
+  - Created infrastructure/docker-compose.yml with all 4 required services
+  - Started Docker Desktop (was not running)
+  - Pulled all Docker images (PostgreSQL 16, Qdrant, Orthanc, Neo4j 5)
+  - Started all services with `docker compose up -d`
+  - Verified connectivity to all services
+  - Removed obsolete version field from docker-compose.yml
+- **Files created/modified**:
+  - `infrastructure/docker-compose.yml` - Docker Compose configuration with 4 services and 5 named volumes
+  - `.ralph-tui/progress.md` - Updated this file
+- **Services deployed**:
+  - **PostgreSQL 16** (medassist-postgres): Port 5432, database `medassist`, credentials `medassist/dev-password`, volume `pgdata`
+  - **Qdrant** (medassist-qdrant): Ports 6333/6334, vector search engine v1.16.3, volume `qdrant_data`
+  - **Orthanc** (medassist-orthanc): Ports 8042 (web/REST) and 4242 (DICOM), credentials `orthanc/orthanc`, volume `orthanc_data`
+  - **Neo4j 5** (medassist-neo4j): Ports 7474 (HTTP browser) and 7687 (Bolt), credentials `neo4j/dev-password`, volumes `neo4j_data` and `neo4j_logs`, APOC plugins enabled
+- **Acceptance Criteria Verification**:
+  - ✅ infrastructure/docker-compose.yml exists (removed version field per Docker Compose best practices)
+  - ✅ PostgreSQL 16 service defined with port 5432, medassist database, and persistent volume pgdata
+  - ✅ Qdrant service defined with port 6333 and persistent volume qdrant_data
+  - ✅ Orthanc service defined with ports 8042 and 4242 and persistent volume orthanc_data
+  - ✅ Neo4j 5 service defined with ports 7474 and 7687 and persistent volumes neo4j_data + neo4j_logs
+  - ✅ All named volumes declared: pgdata, qdrant_data, orthanc_data, neo4j_data, neo4j_logs
+  - ✅ `docker compose up -d` started all 4 services without errors
+  - ✅ All services reachable: PostgreSQL 16.11 on :5432, Qdrant v1.16.3 on :6333, Orthanc on :8042, Neo4j 5.26.21 on :7474/:7687
+- **Learnings**:
+  - **Docker Desktop Auto-Start**: Docker Desktop was not running. Successfully started it programmatically with `"/c/Program Files/Docker/Docker/Docker Desktop.exe" &` and waited 10 seconds for daemon to initialize
+  - **Docker Compose Version Field**: The `version` field is obsolete in Docker Compose and triggers warnings. Modern Docker Compose (v2+) auto-detects the schema version from service definitions. Removed it for cleaner output.
+  - **Health Checks**: All services configured with health checks (pg_isready, wget to web endpoints) to ensure proper startup order and readiness verification
+  - **Image Pull Time**: First-time image pulls can take several minutes (PostgreSQL ~120MB, Neo4j ~160MB, Orthanc ~90MB, Qdrant ~50MB). Subsequent starts are instant.
+  - **Neo4j APOC Plugins**: Configured Neo4j with APOC plugins via `NEO4J_PLUGINS: '["apoc"]'` and unrestricted procedures for medical knowledge graph operations
+  - **Volume Naming**: Docker Compose automatically prefixes volumes with project directory name (infrastructure_pgdata, infrastructure_qdrant_data, etc.)
+  - **Container Naming**: Used explicit `container_name` for all services for easier management (medassist-postgres, medassist-qdrant, medassist-orthanc, medassist-neo4j)
+  - **Restart Policy**: All services configured with `restart: unless-stopped` for automatic restart on system reboot
+  - **Connectivity Testing**: Verified all services with curl (HTTP APIs) and docker exec (PostgreSQL psql). All responding correctly on their respective ports.
+- **Next Steps**:
+  - Update .env file with actual database connection strings: `POSTGRES_HOST=localhost`, `QDRANT_HOST=localhost`, `ORTHANC_HOST=localhost`, `NEO4J_URI=bolt://localhost:7687`
+  - Backend Python code will connect to these services using credentials from .env
+  - US-008+ will implement backend agents that use these data services
 ---
 

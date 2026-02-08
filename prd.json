@@ -143,12 +143,13 @@
         "All services are reachable on their respective ports"
       ],
       "priority": 3,
-      "passes": false,
+      "passes": true,
       "notes": "Requires Docker Desktop running. First pull may take several minutes.",
       "dependsOn": [
         "US-001",
         "US-004"
-      ]
+      ],
+      "completionNotes": "Completed by agent"
     },
     {
       "id": "US-008",
@@ -598,6 +599,6 @@
     }
   ],
   "metadata": {
-    "updatedAt": "2026-02-08T05:09:26.043Z"
+    "updatedAt": "2026-02-08T05:19:33.784Z"
   }
 }
