@@ -6,53 +6,71 @@ after each iteration and it's included in prompts for context.
 ## Codebase Patterns (Study These First)
 
 ### Agent Implementation Pattern
-- All agents inherit from `BaseAgent` (backend/agents/base_agent.py)
-- Required constructor params: agent_id, name, skills (list), models_used (list), color (hex), icon (emoji)
-- Must implement: `execute_skill(skill_name, params)` and `chat(message, context)`
-- Use singleton pattern with `init_<agent>_agent()` and `get_<agent>_agent()` functions
-- Always include disclaimer in outputs (e.g., "Evidence synthesis — clinician verification required")
-- Use `self.log_audit()` to log all operations for HIPAA compliance
+All specialist agents follow a consistent pattern:
+1. Inherit from `BaseAgent` (backend/agents/base_agent.py)
+2. Initialize with: agent_id, name, skills[], models_used[], color, icon
+3. Implement `execute_skill(skill_name, params)` method that routes to private skill methods
+4. Implement `chat(message, context)` method with streaming Claude responses
+5. Include DISCLAIMER constant: "AI-assisted — requires [agent-specific verification]"
+6. Use `self.log_audit()` for all skill executions
+7. Create global singleton with init_*_agent() and get_*_agent() functions
+8. Register in backend/main.py lifespan() startup
 
-### Evidence-Based Output Pattern
-- All clinical outputs must present as "evidence suggests..." not as direct recommendations
-- Always include citations with PMIDs, authors, journal, year
-- Note evidence quality levels (meta-analysis > RCT > cohort > case)
-- Include safety disclaimers requiring clinician verification
+### Claude API Usage Pattern
+- Use Anthropic client initialized with API key
+- Model: "claude-sonnet-4-20250514" (from settings.CLAUDE_MODEL)
+- Streaming chat: `with self.client.messages.stream(...) as stream: for text in stream.text_stream: yield text`
+- Non-streaming: `response = self.client.messages.create(...); content = response.content[0].text`
+- JSON prompt pattern: Request JSON in prompt, parse with try/except, handle markdown code blocks
+- Always add disclaimer after streaming responses
 
-### Integration Client Pattern
-- External API clients use singleton pattern with `get_<service>_client()`
-- Initialize clients with `init_<service>()` function
-- Implement rate limiting for external APIs (PubMed: 3 req/sec without key, 10 req/sec with key)
-- Handle errors gracefully and return empty results rather than raising exceptions
+### Error Handling Pattern
+- Wrap skill methods in try/except blocks
+- Return dict with "error" key on failure
+- Log errors with logger.error()
+- Return safe fallback data structure (empty lists/dicts, requires_review=True)
+- Never propagate exceptions to API layer - return error dict instead
 
 ---
 
-## [2026-02-08] - US-022
-- **Status**: Already implemented in previous iteration
-- Verified Research Agent implementation with PubMed search and evidence synthesis
-- All acceptance criteria met:
-  - ✅ ResearchAgent class inherits from BaseAgent with correct properties (agent_id='research', icon='📚', color='#10b981')
-  - ✅ guideline_search skill uses Claude to formulate optimal PubMed queries, searches literature, and returns results with evidence levels
-  - ✅ evidence_synthesis skill uses Claude to synthesize multiple articles with citations
-  - ✅ All results include source citations (PMID, authors, journal, year)
-  - ✅ Evidence levels properly classified (meta-analysis > RCT > cohort > case)
-  - ✅ All outputs use "evidence suggests..." language per safety requirements
-  - ✅ trial_match skill implemented as placeholder for future ClinicalTrials.gov integration
-  - ✅ literature_review skill combines search and synthesis
-  - ✅ Chat interface with research-focused system prompt
-- **Files involved:**
-  - backend/agents/research_agent.py (652 lines)
-  - backend/tests/test_research_agent.py (480 lines, 23 tests)
-  - backend/integrations/pubmed_client.py (440 lines)
-- **Tests**: All 23 tests passing
-- **Learnings:**
-  - Research Agent leverages Claude for both query formulation and evidence synthesis, ensuring optimal search strategies
-  - Evidence level hierarchy is implemented as a dictionary for efficient sorting (EVIDENCE_LEVELS)
-  - PubMed client handles both esearch (for PMIDs) and efetch (for full metadata) in sequence
-  - XML parsing is encapsulated in _parse_pubmed_xml() for clean separation of concerns
-  - Synthesis prompts explicitly require JSON output format for structured parsing
-  - Agent properly handles missing PubMed client gracefully (returns error rather than crashing)
-  - All outputs consistently include disclaimer for HIPAA compliance and clinical safety
+## 2026-02-08 - US-023: Implement Diagnostic Agent with differential diagnosis
+
+**What was implemented:**
+- Created `backend/agents/diagnostic_agent.py` with full `DiagnosticAgent` class
+- Implemented 4 core skills:
+  1. `differential_dx` - Generate ranked differential diagnoses from clinical data (symptoms, vitals, labs, imaging, history)
+  2. `test_recommendation` - Suggest diagnostic tests with rationale and priority based on differentials
+  3. `pattern_recognition` - Rule-based matching against 6 critical patterns (ACS, sepsis, PE, stroke, DKA, meningitis)
+  4. `rare_disease` - Placeholder for future GARD/Orphanet integration
+- Implemented streaming chat interface with diagnostic system prompt
+- Integrated agent into backend/main.py startup sequence
+
+**Files changed:**
+- `backend/agents/diagnostic_agent.py` (new, 821 lines)
+- `backend/main.py` (added import and initialization)
+
+**Learnings:**
+- **Pattern: JSON Response Parsing** - Claude API returns JSON embedded in markdown code blocks. Standard pattern:
+  ```python
+  if "```json" in content:
+      content = content.split("```json")[1].split("```")[0].strip()
+  elif "```" in content:
+      content = content.split("```")[1].split("```")[0].strip()
+  diagnosis_data = json.loads(content)
+  ```
+  Always wrap in try/except with fallback to empty structure.
+
+- **Pattern: Clinical Summary Building** - Breaking clinical data into structured sections (SYMPTOMS, VITAL SIGNS, LABORATORY RESULTS, IMAGING FINDINGS, PATIENT HISTORY) improves Claude's diagnostic reasoning quality.
+
+- **Pattern: Confidence-Based Safety Checks** - All agents use `confidence < 0.7` threshold to flag outputs for mandatory human review (`requires_review=True`). This is a critical safety feature across the platform.
+
+- **Pattern: Audit Logging** - Every skill execution must call `self.log_audit(request, model, confidence, action)` for HIPAA compliance and debugging.
+
+- **Gotcha: Rule-Based Pattern Matching** - For critical pattern recognition (sepsis, stroke, ACS), rule-based matching is MORE reliable than LLM-based detection for real-time alerts. Store patterns as constants with symptom lists, vital criteria, and red flags.
+
+- **Gotcha: Streaming Disclaimer** - When using `messages.stream()`, the disclaimer must be yielded AFTER the stream completes, not before. Pattern: `yield text` in loop, then `yield f"\n\n---\n{DISCLAIMER}"` after.
+
+- **Design Choice: Claude API Primary, MedGemma Fallback** - Diagnostic reasoning is currently Claude-only. MedGemma 27B listed in models_used for future fallback implementation when self-hosted LLM infrastructure is ready.
 
 ---
 
