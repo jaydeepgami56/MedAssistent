@@ -41,6 +41,19 @@ Modified Early Warning Score (MEWS) implementation:
 - Mypy union-attr warnings for `response.content[0].text` are expected (Anthropic library types)
 - All generated documentation must include `draft_status='pending_review'` to enforce human review
 
+### API Client Integration Pattern
+All integration clients (RxNorm, DrugBank, PubMed) follow a consistent pattern:
+1. Use `httpx.AsyncClient` with timeout configuration (typically 30s)
+2. Initialize from settings: `api_key or settings.API_KEY_NAME`
+3. Implement `async def close()` to cleanup HTTP client
+4. Use explicit type hints for params: `dict[str, str | int]` for httpx compatibility
+5. Use `dict[str, Any]` for dynamic response data structures to satisfy mypy
+6. Include comprehensive error handling: HTTPStatusError, RequestError, generic Exception
+7. Print informative logs for debugging (initialization, errors, result counts)
+8. Provide singleton pattern: `init_client()`, `close_client()`, `get_client()`
+9. Return empty lists/dicts on errors rather than raising exceptions (graceful degradation)
+10. For rate-limited APIs: implement `_rate_limit_delay()` with async sleep and time tracking
+
 ---
 
 ## [2026-02-08] - US-019
@@ -80,6 +93,28 @@ Modified Early Warning Score (MEWS) implementation:
   - All 20 tests pass (11 skipped due to missing API key, which is expected)
   - Mypy shows union-attr warnings for Anthropic library response types - these are third-party library issues, consistent with other agents, acceptable per `--ignore-missing-imports` guidance
   - Agent successfully registered in main.py startup sequence
+
+---
+
+## [2026-02-08] - US-021
+- **What was implemented:** PubMed integration client for medical literature search with NCBI E-utilities API
+- **Files changed:**
+  - `backend/integrations/pubmed_client.py` - Full implementation with search, fetch_abstracts, format_citation methods (new file)
+  - `backend/tests/test_pubmed_client.py` - Comprehensive test suite with 19 tests (new file)
+- **Learnings:**
+  - PubMed API uses two-step process: esearch.fcgi (get PMIDs) → efetch.fcgi (get full metadata)
+  - NCBI rate limiting is strictly enforced: 3 req/sec without API key, 10 req/sec with key
+  - Rate limiting implementation uses async sleep with time tracking between requests
+  - XML parsing with ElementTree requires careful null checks for all elements and text content
+  - Vancouver citation style is standard for medical literature: "Authors. Title. Journal. Year. PMID: xxx"
+  - Author formatting handles both individual authors (LastName + Initials) and CollectiveName elements
+  - PubDate can be in multiple formats: Year element or MedlineDate text (e.g., "2023 Jan-Feb")
+  - Structured abstracts have Label attributes on AbstractText elements (e.g., "BACKGROUND:", "METHODS:")
+  - Type annotations for dict params require explicit types: `dict[str, str | int]` for httpx params compatibility
+  - Using `dict[str, Any]` for article_data dict silences mypy warnings about dynamic key assignments
+  - All 19 tests pass including live API integration tests (search, fetch, citation formatting)
+  - Mypy type checking passes with `--ignore-missing-imports` flag
+  - Rate limiting test verifies mechanism existence rather than strict timing due to network latency variability
 
 ---
 
