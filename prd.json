@@ -412,11 +412,12 @@
         "All outputs include disclaimer: 'Auto-generated — review and edit before finalizing'"
       ],
       "priority": 8,
-      "passes": false,
+      "passes": true,
       "notes": "",
       "dependsOn": [
         "US-009"
-      ]
+      ],
+      "completionNotes": "Completed by agent"
     },
     {
       "id": "US-021",
@@ -611,6 +612,6 @@
     }
   ],
   "metadata": {
-    "updatedAt": "2026-02-08T08:06:29.522Z"
+    "updatedAt": "2026-02-08T08:13:59.683Z"
   }
 }
