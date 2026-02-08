@@ -582,3 +582,133 @@ All specialist agents follow a consistent pattern:
 
 ---
 
+## 2026-02-08 - US-029: Create clinical scenario end-to-end tests
+
+**What was implemented:**
+- Created `backend/tests/test_scenarios.py` with comprehensive end-to-end tests for critical clinical workflows
+- Implemented 7 clinical scenario tests using pytest + httpx.AsyncClient:
+  1. **Scenario 1 (ESI-1)**: Life-threatening presentation (67F, crushing chest pain, BP 90/60, HR 110, SpO2 94%) → Verifies ESI score=1, red flags detected, routing contains "resuscitation"
+  2. **Scenario 2 (ESI-3)**: Urgent stable presentation (32F, abdominal pain, fever 39.2°C) → Verifies ESI score=3
+  3. **Scenario 3 (Drug Interaction)**: Warfarin + ibuprofen → Verifies severity="Critical", blocked=true
+  4. **Scenario 4 (MEWS Critical)**: HR=135, BP sys=80, RR=32, Temp=39.5°C → Verifies MEWS >= 5, alert_level="Critical"
+  5. **Scenario 5 (Radiology)**: Upload test PNG image → Verifies findings list not empty, each finding has confidence score
+  6. **Scenario 6 (Agent Routing)**: "check drug interaction between warfarin and aspirin" → Verifies coordinator routes to pharmacy agent
+  7. **Scenario 7 (SOAP Note)**: Mock encounter with STEMI → Verifies all 4 sections (Subjective, Objective, Assessment, Plan) present with content
+- Added 2 helper tests:
+  - `test_all_agents_registered` - Verifies all 8 agents are registered
+  - `test_all_scenarios_summary` - Provides summary report of all tests
+- All tests use pytest fixtures for API key, async client, and sample image generation
+- Tests skip gracefully if ANTHROPIC_API_KEY not set (with clear skip message)
+- Tests use httpx.AsyncClient against FastAPI app (no need for running server)
+- Comprehensive assertions with descriptive error messages for debugging
+
+**Files changed:**
+- `backend/tests/test_scenarios.py` (new, 447 lines)
+
+**Learnings:**
+
+- **Pattern: End-to-End Test Structure with pytest + httpx.AsyncClient** - For FastAPI apps, use `AsyncClient(app=app, base_url="http://test")` to test without running server:
+  ```python
+  @pytest.fixture
+  async def client():
+      async with AsyncClient(app=app, base_url="http://test") as ac:
+          yield ac
+
+  @pytest.mark.asyncio
+  async def test_endpoint(client):
+      response = await client.post("/endpoint", json={...})
+      assert response.status_code == 200
+  ```
+  This approach tests the full FastAPI stack (routing, validation, middleware) without network overhead.
+
+- **Pattern: Conditional Test Skipping** - Use `pytest.skip()` to gracefully skip tests when dependencies are unavailable:
+  ```python
+  @pytest.fixture
+  def api_key():
+      return os.environ.get("ANTHROPIC_API_KEY")
+
+  async def test_requires_api(client, api_key):
+      if not api_key:
+          pytest.skip("ANTHROPIC_API_KEY not set - skipping Claude-dependent test")
+      # ... test logic
+  ```
+  This allows tests to run in CI/local without API key (shows as "skipped" not "failed").
+
+- **Pattern: Test Image Generation with PIL** - Generate test images programmatically instead of requiring fixture files:
+  ```python
+  @pytest.fixture
+  def sample_image_bytes():
+      img = Image.new('L', (256, 256), color=128)
+      # Add pattern to simulate medical image
+      buf = io.BytesIO()
+      img.save(buf, format='PNG')
+      return buf.getvalue()
+  ```
+  This makes tests self-contained and portable across environments.
+
+- **Pattern: Multipart File Upload Testing** - Use `files` and `data` params for form-data uploads:
+  ```python
+  files = {"file": ("filename.png", image_bytes, "image/png")}
+  data = {"study_type": "chest_xray", "patient_id": "TEST001"}
+  response = await client.post("/endpoint", files=files, data=data)
+  ```
+  The `files` dict has format `{field_name: (filename, bytes, content_type)}`.
+
+- **Pattern: Scenario Test Naming** - Name tests as `test_scenario_N_<description>` for clear organization:
+  - Groups related scenarios together in test output
+  - Makes it easy to run specific scenarios: `pytest -k scenario_1`
+  - Provides context in test reports: "Scenario 1: ESI-1 triage"
+
+- **Pattern: Comprehensive Assertions with Context** - Include descriptive messages in assertions for debugging:
+  ```python
+  assert data["esi_score"] == 1, \
+      f"Expected ESI score 1 for life-threatening presentation, got {data['esi_score']}"
+  ```
+  When tests fail, the message provides immediate context about what went wrong.
+
+- **Pattern: Print Statements for Test Output** - Add print statements to show test progress:
+  ```python
+  print(f"✓ Scenario 1 PASSED: ESI-1 triage correctly identified")
+  print(f"  - ESI Score: {data['esi_score']}")
+  print(f"  - Red Flags: {len(data['red_flags'])} detected")
+  ```
+  With `pytest -v -s`, these provide human-readable test summaries.
+
+- **Gotcha: asyncio Tests with pytest** - Must use `@pytest.mark.asyncio` decorator for async tests:
+  ```python
+  @pytest.mark.asyncio
+  async def test_async_endpoint(client):
+      response = await client.post(...)
+  ```
+  Without the decorator, pytest treats it as a regular function and fails.
+
+- **Gotcha: JSON vs Form-Data Uploads** - For file uploads, use `files=` not `json=`:
+  - JSON endpoints: `client.post("/endpoint", json={...})`
+  - Form-data endpoints: `client.post("/endpoint", files={...}, data={...})`
+  - Mixing them will cause 422 validation errors
+
+- **Gotcha: Test Collection Without Execution** - Use `--collect-only` to verify tests are discovered without running:
+  ```bash
+  pytest tests/test_scenarios.py --collect-only -v
+  ```
+  This catches import errors, syntax issues, and naming problems before execution.
+
+- **Design Choice: Test Fixtures for Reusability** - Create fixtures for common test dependencies:
+  - `api_key` fixture centralizes API key checking across all tests
+  - `client` fixture ensures consistent AsyncClient configuration
+  - `sample_image_bytes` fixture generates test images on-demand
+  This avoids duplication and makes tests easier to maintain.
+
+- **Design Choice: Helper Tests for Test Infrastructure** - Include tests that verify the test setup itself:
+  - `test_all_agents_registered` verifies all agents are available before running scenarios
+  - `test_all_scenarios_summary` provides a human-readable summary report
+  These help diagnose test failures (is it the scenario or the infrastructure?).
+
+- **Design Choice: Realistic Clinical Scenarios** - Use medically accurate scenarios for tests:
+  - ESI-1: Chest pain + hypotension + hypoxia (classic STEMI presentation)
+  - Drug interaction: Warfarin + NSAID (well-known critical interaction with bleeding risk)
+  - MEWS critical: Multiple abnormal vitals (HR, BP, RR, Temp) that should trigger escalation
+  This ensures tests validate real-world clinical decision support, not just API mechanics.
+
+---
+

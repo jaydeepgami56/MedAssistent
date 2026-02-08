@@ -612,14 +612,15 @@
         "pytest tests/test_scenarios.py -v runs without import errors"
       ],
       "priority": 11,
-      "passes": false,
+      "passes": true,
       "notes": "Requires backend running with Docker Compose services up. Some tests need Claude API key.",
       "dependsOn": [
         "US-027"
-      ]
+      ],
+      "completionNotes": "Completed by agent"
     }
   ],
   "metadata": {
-    "updatedAt": "2026-02-08T13:34:09.391Z"
+    "updatedAt": "2026-02-08T13:39:18.092Z"
   }
 }
