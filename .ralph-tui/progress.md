@@ -117,3 +117,76 @@ All specialist agents follow a consistent pattern:
 
 ---
 
+## 2026-02-08 - US-025: Create FHIR R4 EHR integration client
+
+**What was implemented:**
+- Created `backend/integrations/fhir_client.py` with full `FHIRClient` class
+- Implemented 5 core methods for FHIR R4 resource retrieval:
+  1. `get_patient(patient_id)` - Fetches Patient resource and returns simplified demographics (name, age, gender, DOB)
+  2. `get_conditions(patient_id)` - Fetches active Condition resources with code, display, status, onset date
+  3. `get_medications(patient_id)` - Fetches active MedicationRequest resources with code, display, status, dosage
+  4. `get_allergies(patient_id)` - Fetches AllergyIntolerance resources with code, display, status, type, category, criticality, reactions
+  5. `get_observations(patient_id, category)` - Fetches Observation resources filtered by category (vital-signs, laboratory, etc.) with code, value, unit, effective date
+- All methods parse FHIR R4 JSON resources into simplified dicts for easy consumption by agents
+- Integrated FHIR client into backend/main.py startup/shutdown lifecycle
+- Added graceful error handling: returns empty results when FHIR server is unavailable or not configured
+
+**Files changed:**
+- `backend/integrations/fhir_client.py` (new, 825 lines)
+- `backend/integrations/__init__.py` (added FHIR exports)
+- `backend/main.py` (added FHIR client initialization and shutdown)
+- `backend/config.py` (already had FHIR_BASE_URL setting)
+
+**Learnings:**
+- **Pattern: Integration Client Structure** - All external integration clients follow a consistent pattern:
+  - Class with `__init__(base_url)` accepting optional base_url (defaults to settings)
+  - `httpx.AsyncClient` for async HTTP requests with 30s timeout
+  - Public async methods for core operations
+  - Private `_parse_*` methods for converting external formats to simplified dicts
+  - Global singleton pattern with `init_*()`, `close_*()`, and `get_*_client()` functions
+  - Initialization/cleanup in main.py lifespan() startup/shutdown
+
+- **Pattern: Graceful Degradation** - Integration clients MUST handle unavailable external services gracefully:
+  - Check if base_url is configured in `__init__()`, log warning if not
+  - Return empty results (empty list, dict with `found=False`) instead of raising exceptions
+  - Wrap all HTTP calls in try/except with specific handling for `HTTPStatusError`, `RequestError`, and generic exceptions
+  - Log errors with `print()` for debugging but don't propagate to API layer
+
+- **Pattern: FHIR R4 Resource Parsing** - FHIR resources have complex nested structures. Simplify for agents:
+  - Extract codes from `coding` arrays (first coding is usually most relevant)
+  - Fall back to `text` field if no coding available
+  - Handle multiple date formats: `effectiveDateTime`, `effectivePeriod.start`, etc. - always extract date part (split on 'T')
+  - Parse status/verification from nested CodeableConcept structures
+  - Return human-readable `display` names, not just codes
+
+- **Pattern: FHIR Search Parameters** - FHIR APIs use query parameters for filtering:
+  - Patient-scoped queries: `?patient={id}` to filter by patient
+  - Status filtering: `?status=active` or `?clinical-status=active` for active records only
+  - Category filtering: `?category=vital-signs` for Observations
+  - Results come wrapped in Bundle resources with `entry` array containing individual resources
+
+- **Gotcha: FHIR Bundle Responses** - Most FHIR queries return Bundle resources, not individual resources:
+  - Iterate through `data.get("entry", [])` to extract resources
+  - Each entry has `resource` field containing the actual resource
+  - Always check `resourceType` to ensure correct parsing
+  - Empty results return Bundle with no entries (not 404)
+
+- **Gotcha: FHIR Value Polymorphism** - Observation values can be Quantity, String, CodeableConcept, etc.:
+  - Try `valueQuantity` first (most common for vitals/labs) - extract `value` and `unit`
+  - Fall back to `valueString` for text values
+  - Fall back to `valueCodeableConcept` for coded values
+  - Always handle None cases gracefully
+
+- **Design Choice: httpx Over requests** - Using `httpx.AsyncClient` for async compatibility:
+  - Matches async pattern used in RxNorm/DrugBank/PubMed clients
+  - Allows concurrent requests in future (parallel patient data fetching)
+  - 30s timeout balances responsiveness vs. EHR system latency
+
+- **Design Choice: Simplified Data Models** - FHIR resources are verbose. Agents don't need full resources:
+  - Extract only clinically relevant fields (code, display, value, date, status)
+  - Flatten nested structures (e.g., `coding[0].code` → `code`)
+  - Convert dates to simple YYYY-MM-DD strings
+  - Focus on human-readable `display` names over machine codes
+
+---
+
