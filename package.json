@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "@tambo-ai/react": "^0.75.0",
+    "zod": "^4.3.6"
+  }
+}

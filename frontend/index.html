@@ -1,10 +1,11 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" dir="ltr">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>MedAssist AI v2.0 - OpenClaw Multi-Agent Platform</title>
     <meta name="description" content="MedAssist AI - Multi-agent medical AI platform with 8 specialized clinical agents" />
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
     <style>
       * {
         margin: 0;
@@ -12,15 +13,21 @@
         box-sizing: border-box;
       }
       body {
-        font-family: 'Inter', 'SF Pro', Arial, sans-serif;
+        font-family: 'Inter', 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
+        background: var(--bg-primary, #ffffff);
+        color: var(--text-primary, #1a1a2e);
+        transition: background 0.2s, color 0.2s;
       }
       #root {
         width: 100vw;
         height: 100vh;
         overflow: hidden;
       }
+      ::-webkit-scrollbar { width: 6px; }
+      ::-webkit-scrollbar-track { background: var(--scrollbar-track, #f1f3f5); }
+      ::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb, #d1d5db); border-radius: 3px; }
     </style>
   </head>
   <body>

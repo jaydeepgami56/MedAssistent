@@ -2,14 +2,14 @@
 Research Agent - Medical literature search and evidence synthesis.
 
 Implements PubMed literature search, guideline retrieval, and evidence synthesis
-using Claude for query formulation and summarization. Provides clinicians with
+using MedGemma 27B for query formulation and summarization. Provides clinicians with
 up-to-date research evidence and clinical trial information.
 """
 
 import logging
 import json
 from typing import AsyncIterator, Optional, Any
-from anthropic import Anthropic
+from backend.llm_client import get_llm_client, LLM_MODEL
 
 from backend.agents.base_agent import BaseAgent
 from backend.integrations.pubmed_client import get_pubmed_client
@@ -39,16 +39,13 @@ class ResearchAgent(BaseAgent):
     Research Agent for medical literature search and evidence synthesis.
 
     Provides PubMed literature search, guideline retrieval, evidence synthesis,
-    and clinical trial matching. Uses Claude for query formulation and synthesis,
+    and clinical trial matching. Uses MedGemma 27B via LM Studio for query formulation and synthesis,
     PubMed API for literature retrieval.
     """
 
-    def __init__(self, anthropic_api_key: str):
+    def __init__(self):
         """
         Initialize Research Agent.
-
-        Args:
-            anthropic_api_key: Anthropic API key for Claude reasoning
         """
         super().__init__(
             agent_id="research",
@@ -59,14 +56,14 @@ class ResearchAgent(BaseAgent):
                 "trial_match",
                 "literature_review"
             ],
-            models_used=["Claude API", "PubMed API"],
+            models_used=["MedGemma 27B (LM Studio)", "PubMed API"],
             color="#10b981",  # Green
             icon="📚",
             status="Active",
             queue=0
         )
 
-        self.client = Anthropic(api_key=anthropic_api_key)
+        self.llm_client = get_llm_client()
         self._pubmed_client = get_pubmed_client()
 
         if not self._pubmed_client:
@@ -136,7 +133,7 @@ class ResearchAgent(BaseAgent):
             }
 
         try:
-            # Step 1: Use Claude to formulate optimal PubMed search query
+            # Step 1: Use MedGemma 27B to formulate optimal PubMed search query
             search_query = await self._formulate_search_query(clinical_question)
 
             # Step 2: Search PubMed
@@ -188,7 +185,7 @@ class ResearchAgent(BaseAgent):
             # Log audit trail
             self.log_audit(
                 request=f"guideline_search: {clinical_question}",
-                model="Claude API + PubMed API",
+                model="MedGemma 27B + PubMed API",
                 confidence=0.85,
                 action=f"found_{len(articles_with_evidence)}_articles"
             )
@@ -212,7 +209,7 @@ class ResearchAgent(BaseAgent):
 
     async def _formulate_search_query(self, clinical_question: str) -> str:
         """
-        Use Claude to formulate optimal PubMed search query.
+        Use MedGemma 27B to formulate optimal PubMed search query.
 
         Args:
             clinical_question: Clinical question in plain language
@@ -236,14 +233,14 @@ Requirements:
 Return ONLY the search query string, no explanation."""
 
         try:
-            response = self.client.messages.create(
-                model="claude-sonnet-4-20250514",
+            response = self.llm_client.chat.completions.create(
+                model=LLM_MODEL,
                 max_tokens=500,
                 messages=[{"role": "user", "content": prompt}]
             )
 
             # Extract query from response
-            query = response.content[0].text.strip()  # type: ignore
+            query = response.choices[0].message.content.strip()  # type: ignore
 
             # Remove quotes if present
             query = query.strip('"\'')
@@ -372,13 +369,13 @@ Return ONLY the search query string, no explanation."""
             )
 
             # Step 2: Use Claude to synthesize evidence
-            response = self.client.messages.create(
-                model="claude-sonnet-4-20250514",
+            response = self.llm_client.chat.completions.create(
+                model=LLM_MODEL,
                 max_tokens=2000,
                 messages=[{"role": "user", "content": synthesis_prompt}]
             )
 
-            content = response.content[0].text  # type: ignore
+            content = response.choices[0].message.content  # type: ignore
 
             # Step 3: Parse JSON response
             synthesis_data = self._parse_synthesis_response(content)
@@ -393,7 +390,7 @@ Return ONLY the search query string, no explanation."""
             # Log audit trail
             self.log_audit(
                 request=f"evidence_synthesis: {len(articles)} articles",
-                model="Claude API",
+                model="MedGemma 27B",
                 confidence=0.80,
                 action="synthesis_complete"
             )
@@ -604,15 +601,19 @@ Available skills:
 You assist clinicians with research — you never make clinical decisions."""
 
         try:
-            # Stream response from Claude
-            with self.client.messages.stream(
-                model="claude-sonnet-4-20250514",
+            # Stream response from LLM
+            stream = self.llm_client.chat.completions.create(
+                model=LLM_MODEL,
                 max_tokens=2000,
-                system=system_prompt,
-                messages=[{"role": "user", "content": message}]
-            ) as stream:
-                for text in stream.text_stream:
-                    yield text
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": message}
+                ],
+                stream=True,
+            )
+            for chunk in stream:
+                if chunk.choices[0].delta.content:
+                    yield chunk.choices[0].delta.content
 
             # Add disclaimer at the end
             yield f"\n\n---\n{DISCLAIMER}"
@@ -626,18 +627,15 @@ You assist clinicians with research — you never make clinical decisions."""
 _research_agent: Optional[ResearchAgent] = None
 
 
-def init_research_agent(anthropic_api_key: str) -> ResearchAgent:
+def init_research_agent() -> ResearchAgent:
     """
     Initialize the global Research Agent.
-
-    Args:
-        anthropic_api_key: Anthropic API key
 
     Returns:
         ResearchAgent instance
     """
     global _research_agent
-    _research_agent = ResearchAgent(anthropic_api_key)
+    _research_agent = ResearchAgent()
     return _research_agent
 
 

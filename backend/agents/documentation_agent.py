@@ -9,7 +9,7 @@ as drafts requiring clinician review and approval before finalization.
 import logging
 import json
 from typing import AsyncIterator, Optional
-from anthropic import Anthropic
+from backend.llm_client import get_llm_client, LLM_MODEL
 
 from backend.agents.base_agent import BaseAgent
 
@@ -24,16 +24,13 @@ class DocumentationAgent(BaseAgent):
     Documentation Agent for clinical note generation and medical coding.
 
     Provides automated SOAP note generation, discharge summaries, ICD-10 coding,
-    and referral letters. Uses Claude for clinical reasoning and structured
+    and referral letters. Uses MedGemma 27B via LM Studio for clinical reasoning and structured
     documentation generation. All outputs are drafts requiring clinician approval.
     """
 
-    def __init__(self, anthropic_api_key: str):
+    def __init__(self):
         """
         Initialize Documentation Agent.
-
-        Args:
-            anthropic_api_key: Anthropic API key for Claude reasoning
         """
         super().__init__(
             agent_id="docs",
@@ -44,14 +41,14 @@ class DocumentationAgent(BaseAgent):
                 "icd10_coding",
                 "referral_letter"
             ],
-            models_used=["Claude API"],
+            models_used=["MedGemma 27B (LM Studio)"],
             color="#06b6d4",  # Cyan
             icon="📋",
             status="Active",
             queue=0
         )
 
-        self.anthropic_client = Anthropic(api_key=anthropic_api_key)
+        self.llm_client = get_llm_client()
 
     async def execute_skill(self, skill_name: str, params: dict) -> dict:
         """
@@ -117,7 +114,7 @@ class DocumentationAgent(BaseAgent):
         pharmacy_output = encounter_data.get("pharmacy_output", {})
         monitoring_output = encounter_data.get("monitoring_output", {})
 
-        # Build comprehensive prompt for Claude
+        # Build comprehensive prompt for MedGemma 27B
         prompt = self._build_soap_prompt(
             chief_complaint=chief_complaint,
             transcript=transcript,
@@ -129,14 +126,14 @@ class DocumentationAgent(BaseAgent):
         )
 
         try:
-            # Generate SOAP note using Claude
-            response = self.anthropic_client.messages.create(
-                model="claude-sonnet-4-20250514",
+            # Generate SOAP note using LLM
+            response = self.llm_client.chat.completions.create(
+                model=LLM_MODEL,
                 max_tokens=4096,
                 messages=[{"role": "user", "content": prompt}]
             )
 
-            content = response.content[0].text
+            content = response.choices[0].message.content
 
             # Extract JSON from response
             if "```json" in content:
@@ -175,7 +172,7 @@ class DocumentationAgent(BaseAgent):
             # Audit logging
             self.log_audit(
                 request=f"SOAP note generation for patient {patient_id}",
-                model="Claude API",
+                model="MedGemma 27B",
                 confidence=confidence,
                 action="SOAP note draft created"
             )
@@ -221,7 +218,7 @@ class DocumentationAgent(BaseAgent):
             monitoring_output: Monitoring agent results
 
         Returns:
-            str: Formatted prompt for Claude
+            str: Formatted prompt for MedGemma 27B
         """
         prompt_parts = [
             "You are a clinical documentation specialist generating a SOAP note from encounter data.",
@@ -411,13 +408,13 @@ Generate a comprehensive discharge summary in JSON format:
 Be thorough, professional, and clinically accurate."""
 
         try:
-            response = self.anthropic_client.messages.create(
-                model="claude-sonnet-4-20250514",
+            response = self.llm_client.chat.completions.create(
+                model=LLM_MODEL,
                 max_tokens=3072,
                 messages=[{"role": "user", "content": prompt}]
             )
 
-            content = response.content[0].text
+            content = response.choices[0].message.content
 
             # Extract JSON
             if "```json" in content:
@@ -472,7 +469,7 @@ Be thorough, professional, and clinically accurate."""
             # Audit logging
             self.log_audit(
                 request=f"Discharge summary for patient {patient_id}",
-                model="Claude API",
+                model="MedGemma 27B",
                 confidence=0.85,
                 action="Discharge summary draft created"
             )
@@ -556,13 +553,13 @@ Be thorough, professional, and clinically accurate."""
         prompt = "\n".join(prompt_parts)
 
         try:
-            response = self.anthropic_client.messages.create(
-                model="claude-sonnet-4-20250514",
+            response = self.llm_client.chat.completions.create(
+                model=LLM_MODEL,
                 max_tokens=2048,
                 messages=[{"role": "user", "content": prompt}]
             )
 
-            content = response.content[0].text
+            content = response.choices[0].message.content
 
             # Extract JSON
             if "```json" in content:
@@ -588,7 +585,7 @@ Be thorough, professional, and clinically accurate."""
             # Audit logging
             self.log_audit(
                 request="ICD-10 coding from clinical text",
-                model="Claude API",
+                model="MedGemma 27B",
                 confidence=primary_code.get("confidence", 0.0) if primary_code else 0.0,
                 action=f"{len(icd10_codes)} codes suggested"
             )
@@ -666,13 +663,13 @@ Generate a professional, concise referral letter that:
 Return the letter as plain text, properly formatted."""
 
         try:
-            response = self.anthropic_client.messages.create(
-                model="claude-sonnet-4-20250514",
+            response = self.llm_client.chat.completions.create(
+                model=LLM_MODEL,
                 max_tokens=2048,
                 messages=[{"role": "user", "content": prompt}]
             )
 
-            letter = response.content[0].text
+            letter = response.choices[0].message.content
 
             result = {
                 "letter": letter,
@@ -685,7 +682,7 @@ Return the letter as plain text, properly formatted."""
             # Audit logging
             self.log_audit(
                 request=f"Referral letter to {specialist_type} for patient {patient_id}",
-                model="Claude API",
+                model="MedGemma 27B",
                 confidence=0.90,
                 action="Referral letter draft created"
             )
@@ -729,15 +726,19 @@ Context:
 Respond concisely and professionally. All generated documentation is draft-only and requires clinician review."""
 
         try:
-            # Stream response from Claude
-            with self.anthropic_client.messages.stream(
-                model="claude-sonnet-4-20250514",
+            # Stream response from LLM
+            stream = self.llm_client.chat.completions.create(
+                model=LLM_MODEL,
                 max_tokens=2048,
-                system=system_prompt,
-                messages=[{"role": "user", "content": message}]
-            ) as stream:
-                for text in stream.text_stream:
-                    yield text
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": message}
+                ],
+                stream=True,
+            )
+            for chunk in stream:
+                if chunk.choices[0].delta.content:
+                    yield chunk.choices[0].delta.content
 
             # Yield disclaimer at the end
             yield f"\n\n{DISCLAIMER}"
@@ -751,23 +752,17 @@ Respond concisely and professionally. All generated documentation is draft-only 
 _documentation_agent: Optional[DocumentationAgent] = None
 
 
-def init_documentation_agent(anthropic_api_key: str) -> DocumentationAgent:
+def init_documentation_agent() -> DocumentationAgent:
     """
     Initialize global Documentation Agent.
-
-    Args:
-        anthropic_api_key: Anthropic API key for Claude
 
     Returns:
         DocumentationAgent instance
     """
     global _documentation_agent
 
-    if not anthropic_api_key:
-        raise ValueError("ANTHROPIC_API_KEY required for Documentation Agent")
-
     try:
-        _documentation_agent = DocumentationAgent(anthropic_api_key)
+        _documentation_agent = DocumentationAgent()
         logger.info("Documentation Agent initialized successfully")
         return _documentation_agent
     except Exception as e:

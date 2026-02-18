@@ -265,6 +265,26 @@ export async function searchResearch(query) {
 }
 
 /**
+ * Generate UI component from prompt
+ * @param {string} prompt - Natural language UI description
+ * @returns {Promise<Object>} Generated component specification
+ */
+export async function generateUI(prompt) {
+  return fetchJSON("/agents/genui/generate", {
+    method: "POST",
+    body: JSON.stringify({ prompt }),
+  });
+}
+
+/**
+ * Get GenUI agent status
+ * @returns {Promise<Object>} GenUI status and capabilities
+ */
+export async function getGenUIStatus() {
+  return fetchJSON("/agents/genui/status");
+}
+
+/**
  * Health check endpoint
  * @returns {Promise<Object>} Health status
  */

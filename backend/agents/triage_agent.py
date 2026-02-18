@@ -9,7 +9,7 @@ Claude API for clinical reasoning.
 
 import logging
 from typing import AsyncIterator
-from anthropic import Anthropic
+from backend.llm_client import get_llm_client, LLM_MODEL
 
 from backend.agents.base_agent import BaseAgent
 from backend.models.clinical_bert import get_clinical_bert_service
@@ -25,16 +25,13 @@ class TriageAgent(BaseAgent):
     Triage Agent for emergency patient assessment.
 
     Provides ESI 1-5 scoring, red flag detection, and routing recommendations
-    for incoming patients. Uses ClinicalBERT for symptom extraction and Claude
-    for clinical reasoning.
+    for incoming patients. Uses ClinicalBERT for symptom extraction and MedGemma 27B
+    via LM Studio for clinical reasoning.
     """
 
-    def __init__(self, anthropic_api_key: str):
+    def __init__(self):
         """
         Initialize Triage Agent.
-
-        Args:
-            anthropic_api_key: Anthropic API key for Claude reasoning
         """
         super().__init__(
             agent_id="triage",
@@ -45,14 +42,14 @@ class TriageAgent(BaseAgent):
                 "patient_routing",
                 "emergency_alert"
             ],
-            models_used=["ClinicalBERT", "Claude API"],
+            models_used=["ClinicalBERT", "MedGemma 27B (LM Studio)"],
             color="#ef4444",  # Red
             icon="🚨",
             status="Active",
             queue=0
         )
 
-        self.anthropic_client = Anthropic(api_key=anthropic_api_key)
+        self.llm_client = get_llm_client()
 
     async def execute_skill(self, skill_name: str, params: dict) -> dict:
         """
@@ -149,8 +146,8 @@ class TriageAgent(BaseAgent):
         # Determine minimum ESI based on red flags
         minimum_esi = 2 if red_flags else 5
 
-        # Use Claude API for ESI determination with clinical reasoning
-        esi_result = await self._claude_esi_determination(
+        # Use MedGemma 27B via LM Studio for ESI determination with clinical reasoning
+        esi_result = await self._llm_esi_determination(
             complaint=complaint,
             vitals=vitals,
             pain_scale=pain_scale,
@@ -167,7 +164,7 @@ class TriageAgent(BaseAgent):
         # Log audit trail
         self.log_audit(
             request=f"ESI scoring: {complaint[:50]}",
-            model="ClinicalBERT + Claude API",
+            model="ClinicalBERT + MedGemma 27B",
             confidence=esi_result.get("confidence", 0.0),
             action=f"ESI-{esi_result['esi_score']} assigned"
         )
@@ -267,7 +264,7 @@ class TriageAgent(BaseAgent):
 
         return red_flags
 
-    async def _claude_esi_determination(
+    async def _llm_esi_determination(
         self,
         complaint: str,
         vitals: dict,
@@ -279,7 +276,7 @@ class TriageAgent(BaseAgent):
         minimum_esi: int
     ) -> dict:
         """
-        Use Claude API to determine ESI score with clinical reasoning.
+        Use MedGemma 27B via LM Studio to determine ESI score with clinical reasoning.
 
         Args:
             complaint: Chief complaint
@@ -331,16 +328,16 @@ Provide your assessment as a JSON object with:
 
 Return ONLY valid JSON."""
 
-        # Call Claude API
-        response = self.anthropic_client.messages.create(
-            model="claude-sonnet-4-20250514",
+        # Call LLM API
+        response = self.llm_client.chat.completions.create(
+            model=LLM_MODEL,
             max_tokens=1024,
             messages=[{"role": "user", "content": prompt}]
         )
 
         # Parse JSON response
         import json
-        response_text = response.content[0].text.strip()
+        response_text = response.choices[0].message.content.strip()
 
         # Remove markdown code blocks if present
         if response_text.startswith("```json"):
@@ -499,15 +496,19 @@ Context:
 
 Respond concisely and professionally."""
 
-        # Stream response from Claude
-        with self.anthropic_client.messages.stream(
-            model="claude-sonnet-4-20250514",
+        # Stream response from LLM
+        stream = self.llm_client.chat.completions.create(
+            model=LLM_MODEL,
             max_tokens=1024,
-            system=system_prompt,
-            messages=[{"role": "user", "content": message}]
-        ) as stream:
-            for text in stream.text_stream:
-                yield text
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": message}
+            ],
+            stream=True,
+        )
+        for chunk in stream:
+            if chunk.choices[0].delta.content:
+                yield chunk.choices[0].delta.content
 
         # Yield disclaimer at the end
         yield f"\n\n{DISCLAIMER}"
@@ -517,16 +518,13 @@ Respond concisely and professionally."""
 _triage_agent = None
 
 
-def init_triage_agent(anthropic_api_key: str) -> None:
+def init_triage_agent() -> None:
     """
     Initialize global Triage Agent.
-
-    Args:
-        anthropic_api_key: Anthropic API key for Claude
     """
     global _triage_agent
     try:
-        _triage_agent = TriageAgent(anthropic_api_key)
+        _triage_agent = TriageAgent()
         logger.info("Triage Agent initialized successfully")
     except Exception as e:
         logger.error(f"Failed to initialize Triage Agent: {e}")

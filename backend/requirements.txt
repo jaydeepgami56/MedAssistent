@@ -11,7 +11,7 @@ pydantic-settings
 httpx
 
 # AI/ML providers
-anthropic
+openai
 qdrant-client
 transformers
 torch

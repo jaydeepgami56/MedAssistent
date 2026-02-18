@@ -22,6 +22,7 @@ from backend.agents.monitoring_agent import get_monitoring_agent
 from backend.agents.documentation_agent import get_documentation_agent
 from backend.agents.research_agent import get_research_agent
 from backend.agents.coordinator_agent import get_coordinator_agent
+from backend.agents.genui_agent import get_genui_agent
 
 
 logger = logging.getLogger(__name__)
@@ -72,6 +73,10 @@ class ResearchRequest(BaseModel):
     query: str
 
 
+class GenUIRequest(BaseModel):
+    prompt: str
+
+
 # Helper function to get all agents
 def get_all_agents():
     """Get all registered agents."""
@@ -110,6 +115,10 @@ def get_all_agents():
     if coordinator:
         agents.append(coordinator)
 
+    genui = get_genui_agent()
+    if genui:
+        agents.append(genui)
+
     return agents
 
 
@@ -124,6 +133,7 @@ def get_agent_by_id(agent_id: str):
         "documentation": get_documentation_agent,
         "research": get_research_agent,
         "coordinator": get_coordinator_agent,
+        "genui": get_genui_agent,
     }
 
     getter = agent_getters.get(agent_id)
@@ -565,4 +575,45 @@ async def get_latest_vitals():
         "temp": 37.1,
         "rr": 18,
         "mews": 2
+    }
+
+
+@router.post("/genui/generate")
+async def genui_generate(request: GenUIRequest):
+    """
+    Generate UI component from natural language prompt.
+
+    Args:
+        request: GenUIRequest with prompt
+
+    Returns:
+        Generated component specification
+
+    Raises:
+        HTTPException: 503 if GenUI agent not available
+    """
+    agent = get_genui_agent()
+    if not agent:
+        raise HTTPException(status_code=503, detail="GenUI agent not available")
+
+    try:
+        result = await agent.execute_skill("component_generation", {"prompt": request.prompt})
+        return result
+    except Exception as e:
+        logger.error(f"Error in UI generation: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"UI generation failed: {str(e)}")
+
+
+@router.get("/genui/status")
+async def get_genui_status():
+    """Get GenUI agent status and capabilities."""
+    agent = get_genui_agent()
+    if not agent:
+        raise HTTPException(status_code=503, detail="GenUI agent not available")
+    
+    return {
+        "status": "active",
+        "copilotkit_enabled": False,  # Will be True after CopilotKit integration
+        "mcp_enabled": False,  # Future MCP integration
+        "capabilities": agent.skills
     }

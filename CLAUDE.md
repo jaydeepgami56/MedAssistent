@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-MedAssist AI is a multi-agent medical AI platform built on **OpenClaw** with **A2UI** (Agent-to-User Interface). It orchestrates **8 specialized AI agents** for clinical decision support: imaging analysis, triage, diagnostics, pharmacy, monitoring, documentation, and research — all through a unified, HIPAA-compliant interface.
+MedAssist AI is a comprehensive medical multi-agent platform built on **OpenClaw** with **A2UI** (Agent-to-User Interface) for intelligent healthcare assistance. It orchestrates 8 specialized AI agents for imaging, triage, clinical decision support, drug interaction, monitoring, documentation, and research—all through a unified, secure, and visually rich interface.
 
 > **Critical**: This is a clinical decision SUPPORT system. ALL outputs require clinician verification. The system assists — it never decides. ESI 1-2 cases auto-escalate to the attending physician.
 
@@ -43,6 +43,15 @@ Input Channels → OpenClaw Gateway → Coordinator Agent → Specialist Agents
 
 - **Sequential** (simple): User → Gateway → Coordinator → Single Agent → A2UI
 - **Parallel Consensus** (complex): Coordinator fans out to multiple agents, builds consensus, flags disagreements for human review
+
+## Features
+
+- 8 Medical AI Agents: Triage, Radiology, Diagnostic, Pharmacy, Monitoring, Documentation, Research, Coordinator
+- A2UI Templates: JSONL-based UI for clinical workflows
+- Multi-Agent Consensus: For complex medical cases
+- Real-Time Monitoring: Vitals, alerts, and early warning
+- Automated Documentation: SOAP notes, discharge summaries
+- Evidence-Based Research: PubMed, guidelines, trial matching
 
 ### Data Flow Example (Chest X-Ray)
 

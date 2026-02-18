@@ -8,7 +8,7 @@ for interaction details. Critical interactions block workflow pending physician 
 
 import logging
 from typing import AsyncIterator, Optional
-from anthropic import Anthropic
+from backend.llm_client import get_llm_client, LLM_MODEL
 
 from backend.agents.base_agent import BaseAgent
 from backend.integrations.rxnorm_client import get_rxnorm_client
@@ -42,12 +42,9 @@ class PharmacyAgent(BaseAgent):
         "requires monitoring", "dose adjustment", "toxic"
     ]
 
-    def __init__(self, anthropic_api_key: str):
+    def __init__(self):
         """
         Initialize Pharmacy Agent.
-
-        Args:
-            anthropic_api_key: Anthropic API key for Claude reasoning
         """
         super().__init__(
             agent_id="pharmacy",
@@ -58,14 +55,14 @@ class PharmacyAgent(BaseAgent):
                 "contraindication",
                 "med_reconciliation"
             ],
-            models_used=["Claude API", "RxNorm API", "DrugBank API"],
+            models_used=["MedGemma 27B (LM Studio)", "RxNorm API", "DrugBank API"],
             color="#f59e0b",  # Amber
             icon="[Rx]",  # ASCII-safe icon for Windows console
             status="Active",
             queue=0
         )
 
-        self.anthropic_client = Anthropic(api_key=anthropic_api_key)
+        self.llm_client = get_llm_client()
 
     async def execute_skill(self, skill_name: str, params: dict) -> dict:
         """
@@ -334,7 +331,7 @@ class PharmacyAgent(BaseAgent):
 
     async def _generate_alternatives(self, blocked_interactions: list[dict], patient_conditions: list[str]) -> list[dict]:
         """
-        Generate alternative drug suggestions for blocked interactions using Claude.
+        Generate alternative drug suggestions for blocked interactions using MedGemma 27B.
 
         Args:
             blocked_interactions: List of critical interactions
@@ -379,14 +376,14 @@ Return as JSON array:
 Focus on commonly used, evidence-based alternatives. Keep rationales concise (1-2 sentences)."""
 
         try:
-            response = self.anthropic_client.messages.create(
-                model="claude-sonnet-4-20250514",
+            response = self.llm_client.chat.completions.create(
+                model=LLM_MODEL,
                 max_tokens=2048,
                 messages=[{"role": "user", "content": prompt}]
             )
 
             # Extract JSON from response
-            content = response.content[0].text
+            content = response.choices[0].message.content
             # Strip markdown code blocks if present
             if "```json" in content:
                 content = content.split("```json")[1].split("```")[0].strip()
@@ -435,7 +432,7 @@ Focus on commonly used, evidence-based alternatives. Keep rationales concise (1-
                 "disclaimer": DISCLAIMER
             }
 
-        # Use Claude for dosage calculation reasoning
+        # Use MedGemma 27B for dosage calculation reasoning
         prompt = f"""You are a clinical pharmacist calculating drug dosages.
 
 DRUG: {drug}
@@ -464,13 +461,13 @@ Return as JSON:
 Be specific and clinically accurate. Include important warnings and monitoring parameters."""
 
         try:
-            response = self.anthropic_client.messages.create(
-                model="claude-sonnet-4-20250514",
+            response = self.llm_client.chat.completions.create(
+                model=LLM_MODEL,
                 max_tokens=1024,
                 messages=[{"role": "user", "content": prompt}]
             )
 
-            content = response.content[0].text
+            content = response.choices[0].message.content
             if "```json" in content:
                 content = content.split("```json")[1].split("```")[0].strip()
             elif "```" in content:
@@ -483,7 +480,7 @@ Be specific and clinically accurate. Include important warnings and monitoring p
             # Audit logging
             self.log_audit(
                 request=f"Dosage calc: {drug} for {weight}kg, {age}yo, renal: {renal_function}",
-                model="Claude API",
+                model="MedGemma 27B",
                 confidence=0.85,
                 action="Dosage calculated"
             )
@@ -636,7 +633,7 @@ Be specific and clinically accurate. Include important warnings and monitoring p
         home_only = list(home_set - hospital_set)
         hospital_only = list(hospital_set - home_set)
 
-        # Generate recommendations using Claude
+        # Generate recommendations using MedGemma 27B
         prompt = f"""You are a clinical pharmacist performing medication reconciliation.
 
 HOME MEDICATIONS (not ordered in hospital):
@@ -656,13 +653,13 @@ Provide reconciliation recommendations:
 Keep recommendations brief and actionable."""
 
         try:
-            response = self.anthropic_client.messages.create(
-                model="claude-sonnet-4-20250514",
+            response = self.llm_client.chat.completions.create(
+                model=LLM_MODEL,
                 max_tokens=1024,
                 messages=[{"role": "user", "content": prompt}]
             )
 
-            recommendations = response.content[0].text
+            recommendations = response.choices[0].message.content
 
         except Exception as e:
             logger.error(f"Failed to generate reconciliation recommendations: {e}")
@@ -671,7 +668,7 @@ Keep recommendations brief and actionable."""
         # Audit logging
         self.log_audit(
             request=f"Med reconciliation: {len(home_meds)} home, {len(hospital_meds)} hospital",
-            model="RxNorm+Claude",
+            model="RxNorm+MedGemma 27B",
             confidence=0.9,
             action=f"Found {len(home_only)} home-only, {len(hospital_only)} hospital-only"
         )
@@ -723,15 +720,19 @@ Always end responses with: "{DISCLAIMER}"
 """
 
         try:
-            # Stream response from Claude
-            with self.anthropic_client.messages.stream(
-                model="claude-sonnet-4-20250514",
+            # Stream response from LLM
+            stream = self.llm_client.chat.completions.create(
+                model=LLM_MODEL,
                 max_tokens=2048,
-                system=system_prompt,
-                messages=[{"role": "user", "content": message}]
-            ) as stream:
-                for text in stream.text_stream:
-                    yield text
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": message}
+                ],
+                stream=True,
+            )
+            for chunk in stream:
+                if chunk.choices[0].delta.content:
+                    yield chunk.choices[0].delta.content
 
             # Append disclaimer
             yield f"\n\n{DISCLAIMER}"
@@ -745,23 +746,17 @@ Always end responses with: "{DISCLAIMER}"
 _pharmacy_agent: Optional[PharmacyAgent] = None
 
 
-async def init_pharmacy_agent(anthropic_api_key: str) -> PharmacyAgent:
+async def init_pharmacy_agent() -> PharmacyAgent:
     """
     Initialize the global Pharmacy Agent.
-
-    Args:
-        anthropic_api_key: Anthropic API key for Claude
 
     Returns:
         PharmacyAgent instance
     """
     global _pharmacy_agent
 
-    if not anthropic_api_key:
-        raise ValueError("ANTHROPIC_API_KEY required for Pharmacy Agent")
-
     try:
-        _pharmacy_agent = PharmacyAgent(anthropic_api_key)
+        _pharmacy_agent = PharmacyAgent()
         logger.info("Pharmacy Agent initialized successfully")
         return _pharmacy_agent
     except Exception as e:

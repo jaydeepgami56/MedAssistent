@@ -9,7 +9,7 @@ rolling window for vital sign tracking.
 import logging
 from typing import AsyncIterator
 from datetime import datetime, timedelta
-from anthropic import Anthropic
+from backend.llm_client import get_llm_client, LLM_MODEL
 
 from backend.agents.base_agent import BaseAgent
 
@@ -24,15 +24,12 @@ class MonitoringAgent(BaseAgent):
     Monitoring Agent for patient vital sign tracking.
 
     Provides MEWS scoring, vital sign tracking, anomaly detection, and auto-alerting
-    for patient deterioration. Uses time-series analysis and Claude for clinical context.
+    for patient deterioration. Uses time-series analysis and MedGemma 27B via LM Studio for clinical context.
     """
 
-    def __init__(self, anthropic_api_key: str):
+    def __init__(self):
         """
         Initialize Monitoring Agent.
-
-        Args:
-            anthropic_api_key: Anthropic API key for Claude reasoning
         """
         super().__init__(
             agent_id="monitoring",
@@ -43,14 +40,14 @@ class MonitoringAgent(BaseAgent):
                 "anomaly_detection",
                 "alert_gen"
             ],
-            models_used=["Time-series ML", "Claude API"],
+            models_used=["Time-series ML", "MedGemma 27B (LM Studio)"],
             color="#a855f7",  # Purple
             icon="📊",
             status="Active",
             queue=0
         )
 
-        self.anthropic_client = Anthropic(api_key=anthropic_api_key)
+        self.llm_client = get_llm_client()
 
         # In-memory storage for vital signs (6-hour rolling window)
         # Format: {patient_id: [{timestamp, hr, bp_sys, bp_dia, spo2, temp, rr, mews}, ...]}
@@ -667,15 +664,19 @@ Context:
 
 Respond concisely and professionally."""
 
-        # Stream response from Claude
-        with self.anthropic_client.messages.stream(
-            model="claude-sonnet-4-20250514",
+        # Stream response from LLM
+        stream = self.llm_client.chat.completions.create(
+            model=LLM_MODEL,
             max_tokens=1024,
-            system=system_prompt,
-            messages=[{"role": "user", "content": message}]
-        ) as stream:
-            for text in stream.text_stream:
-                yield text
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": message}
+            ],
+            stream=True,
+        )
+        for chunk in stream:
+            if chunk.choices[0].delta.content:
+                yield chunk.choices[0].delta.content
 
         # Yield disclaimer at the end
         yield f"\n\n{DISCLAIMER}"
@@ -685,16 +686,13 @@ Respond concisely and professionally."""
 _monitoring_agent = None
 
 
-def init_monitoring_agent(anthropic_api_key: str) -> None:
+def init_monitoring_agent() -> None:
     """
     Initialize global Monitoring Agent.
-
-    Args:
-        anthropic_api_key: Anthropic API key for Claude
     """
     global _monitoring_agent
     try:
-        _monitoring_agent = MonitoringAgent(anthropic_api_key)
+        _monitoring_agent = MonitoringAgent()
         logger.info("Monitoring Agent initialized successfully")
     except Exception as e:
         logger.error(f"Failed to initialize Monitoring Agent: {e}")

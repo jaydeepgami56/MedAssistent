@@ -40,7 +40,7 @@ async def lifespan(app: FastAPI):
     """
     # Startup
     print("MedAssist AI Backend starting...")
-    print(f"   Claude Model: {settings.CLAUDE_MODEL}")
+    print(f"   LM Studio Model: {settings.LM_STUDIO_MODEL}")
     print(f"   Qdrant: {settings.QDRANT_HOST}:{settings.QDRANT_PORT}")
     print(f"   PostgreSQL: {settings.POSTGRES_HOST}:{settings.POSTGRES_PORT}/{settings.POSTGRES_DB}")
     print(f"   Orthanc: {settings.ORTHANC_HOST}:{settings.ORTHANC_PORT}")
@@ -53,25 +53,19 @@ async def lifespan(app: FastAPI):
     await init_qdrant()
 
     # Initialize ClinicalBERT service
-    init_clinical_bert(anthropic_api_key=settings.ANTHROPIC_API_KEY)
+    init_clinical_bert()
 
     # Initialize MedImageInsight service
     init_medimageinsight(model_dir=settings.MEDIMAGEINSIGHT_MODEL_DIR)
 
     # Initialize MedGemma service
-    init_medgemma(anthropic_api_key=settings.ANTHROPIC_API_KEY, model_dir=None)
+    init_medgemma(model_dir=None)
 
     # Initialize Triage Agent
-    if settings.ANTHROPIC_API_KEY:
-        init_triage_agent(anthropic_api_key=settings.ANTHROPIC_API_KEY)
-    else:
-        print("   WARNING: ANTHROPIC_API_KEY not set - Triage Agent will not be available")
+    init_triage_agent()
 
     # Initialize Radiology Agent
-    if settings.ANTHROPIC_API_KEY:
-        init_radiology_agent(anthropic_api_key=settings.ANTHROPIC_API_KEY)
-    else:
-        print("   WARNING: ANTHROPIC_API_KEY not set - Radiology Agent will not be available")
+    init_radiology_agent()
 
     # Initialize RxNorm, DrugBank, PubMed, FHIR, and DICOM clients
     await init_rxnorm()
@@ -81,40 +75,22 @@ async def lifespan(app: FastAPI):
     await init_dicom()
 
     # Initialize Pharmacy Agent
-    if settings.ANTHROPIC_API_KEY:
-        await init_pharmacy_agent(anthropic_api_key=settings.ANTHROPIC_API_KEY)
-    else:
-        print("   WARNING: ANTHROPIC_API_KEY not set - Pharmacy Agent will not be available")
+    await init_pharmacy_agent()
 
     # Initialize Monitoring Agent
-    if settings.ANTHROPIC_API_KEY:
-        init_monitoring_agent(anthropic_api_key=settings.ANTHROPIC_API_KEY)
-    else:
-        print("   WARNING: ANTHROPIC_API_KEY not set - Monitoring Agent will not be available")
+    init_monitoring_agent()
 
     # Initialize Documentation Agent
-    if settings.ANTHROPIC_API_KEY:
-        init_documentation_agent(anthropic_api_key=settings.ANTHROPIC_API_KEY)
-    else:
-        print("   WARNING: ANTHROPIC_API_KEY not set - Documentation Agent will not be available")
+    init_documentation_agent()
 
     # Initialize Research Agent
-    if settings.ANTHROPIC_API_KEY:
-        init_research_agent(anthropic_api_key=settings.ANTHROPIC_API_KEY)
-    else:
-        print("   WARNING: ANTHROPIC_API_KEY not set - Research Agent will not be available")
+    init_research_agent()
 
     # Initialize Diagnostic Agent
-    if settings.ANTHROPIC_API_KEY:
-        init_diagnostic_agent(anthropic_api_key=settings.ANTHROPIC_API_KEY)
-    else:
-        print("   WARNING: ANTHROPIC_API_KEY not set - Diagnostic Agent will not be available")
+    init_diagnostic_agent()
 
     # Initialize Coordinator Agent
-    if settings.ANTHROPIC_API_KEY:
-        init_coordinator_agent(anthropic_api_key=settings.ANTHROPIC_API_KEY)
-    else:
-        print("   WARNING: ANTHROPIC_API_KEY not set - Coordinator Agent will not be available")
+    init_coordinator_agent()
 
     # Register all specialist agents with the coordinator
     coordinator = get_coordinator_agent()

@@ -10,7 +10,7 @@ critical findings.
 import logging
 import json
 from typing import AsyncIterator
-from anthropic import Anthropic
+from backend.llm_client import get_llm_client, LLM_MODEL
 
 from backend.agents.base_agent import BaseAgent
 
@@ -29,12 +29,9 @@ class CoordinatorAgent(BaseAgent):
     escalation for critical cases.
     """
 
-    def __init__(self, anthropic_api_key: str):
+    def __init__(self):
         """
         Initialize Coordinator Agent.
-
-        Args:
-            anthropic_api_key: Anthropic API key for Claude reasoning
         """
         super().__init__(
             agent_id="coordinator",
@@ -45,14 +42,14 @@ class CoordinatorAgent(BaseAgent):
                 "safety_check",
                 "escalation"
             ],
-            models_used=["Claude API"],
+            models_used=["MedGemma 27B (LM Studio)"],
             color="#e879f9",  # Purple/Fuchsia
             icon="🧠",
             status="Active",
             queue=0
         )
 
-        self.anthropic_client = Anthropic(api_key=anthropic_api_key)
+        self.llm_client = get_llm_client()
 
         # Registry of specialist agents - will be populated after initialization
         self.specialist_agents = {}
@@ -156,15 +153,15 @@ Provide your routing decision as a JSON object with:
 
 Return ONLY valid JSON."""
 
-            # Call Claude API
-            response = self.anthropic_client.messages.create(
-                model="claude-sonnet-4-20250514",
+            # Call LLM API
+            response = self.llm_client.chat.completions.create(
+                model=LLM_MODEL,
                 max_tokens=1024,
                 messages=[{"role": "user", "content": prompt}]
             )
 
             # Parse JSON response
-            content = response.content[0].text.strip()
+            content = response.choices[0].message.content.strip()
 
             # Remove markdown code blocks if present
             if "```json" in content:
@@ -189,7 +186,7 @@ Return ONLY valid JSON."""
             # Log audit trail
             self.log_audit(
                 request=f"Routing: {message[:50]}",
-                model="Claude API",
+                model="MedGemma 27B",
                 confidence=result.get("confidence", 0.0),
                 action=f"Routed to {', '.join(result['target_agents'])}"
             )
@@ -282,15 +279,15 @@ Provide your analysis as a JSON object with:
 
 Return ONLY valid JSON."""
 
-            # Call Claude API
-            response = self.anthropic_client.messages.create(
-                model="claude-sonnet-4-20250514",
+            # Call LLM API
+            response = self.llm_client.chat.completions.create(
+                model=LLM_MODEL,
                 max_tokens=2048,
                 messages=[{"role": "user", "content": prompt}]
             )
 
             # Parse JSON response
-            content = response.content[0].text.strip()
+            content = response.choices[0].message.content.strip()
 
             # Remove markdown code blocks if present
             if "```json" in content:
@@ -315,7 +312,7 @@ Return ONLY valid JSON."""
             # Log audit trail
             self.log_audit(
                 request=f"Consensus for {len(agent_results)} agents",
-                model="Claude API",
+                model="MedGemma 27B",
                 confidence=overall_confidence,
                 action=f"Agreement: {result['agreement_level']}, Review: {result['requires_review']}"
             )
@@ -583,15 +580,19 @@ Context:
 
 Respond concisely and professionally."""
 
-        # Stream response from Claude
-        with self.anthropic_client.messages.stream(
-            model="claude-sonnet-4-20250514",
+        # Stream response from LLM
+        stream = self.llm_client.chat.completions.create(
+            model=LLM_MODEL,
             max_tokens=1024,
-            system=system_prompt,
-            messages=[{"role": "user", "content": message}]
-        ) as stream:
-            for text in stream.text_stream:
-                yield text
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": message}
+            ],
+            stream=True,
+        )
+        for chunk in stream:
+            if chunk.choices[0].delta.content:
+                yield chunk.choices[0].delta.content
 
         # Yield disclaimer at the end
         yield f"\n\n{DISCLAIMER}"
@@ -601,16 +602,13 @@ Respond concisely and professionally."""
 _coordinator_agent = None
 
 
-def init_coordinator_agent(anthropic_api_key: str) -> None:
+def init_coordinator_agent() -> None:
     """
     Initialize global Coordinator Agent.
-
-    Args:
-        anthropic_api_key: Anthropic API key for Claude
     """
     global _coordinator_agent
     try:
-        _coordinator_agent = CoordinatorAgent(anthropic_api_key)
+        _coordinator_agent = CoordinatorAgent()
         logger.info("Coordinator Agent initialized successfully")
     except Exception as e:
         logger.error(f"Failed to initialize Coordinator Agent: {e}")

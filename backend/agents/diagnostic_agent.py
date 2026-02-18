@@ -16,7 +16,7 @@ clinical decision-making. All outputs require clinician verification.
 import logging
 import json
 from typing import AsyncIterator, Optional, Any
-from anthropic import Anthropic
+from backend.llm_client import get_llm_client, LLM_MODEL
 
 from backend.agents.base_agent import BaseAgent
 
@@ -65,16 +65,12 @@ class DiagnosticAgent(BaseAgent):
     Diagnostic Agent for differential diagnosis and clinical reasoning.
 
     Provides differential diagnosis generation, test recommendations,
-    and pattern recognition. Uses Claude API for clinical reasoning
-    with planned MedGemma 27B fallback for complex cases.
+    and pattern recognition. Uses MedGemma 27B via LM Studio for clinical reasoning.
     """
 
-    def __init__(self, anthropic_api_key: str):
+    def __init__(self):
         """
         Initialize Diagnostic Agent.
-
-        Args:
-            anthropic_api_key: Anthropic API key for Claude reasoning
         """
         super().__init__(
             agent_id="diagnostic",
@@ -85,14 +81,14 @@ class DiagnosticAgent(BaseAgent):
                 "pattern_recognition",
                 "rare_disease"
             ],
-            models_used=["Claude API", "MedGemma 27B"],
+            models_used=["MedGemma 27B (LM Studio)"],
             color="#22c55e",  # Green
             icon="🔬",
             status="Active",
             queue=0
         )
 
-        self.client = Anthropic(api_key=anthropic_api_key)
+        self.llm_client = get_llm_client()
         logger.info("Diagnostic Agent initialized successfully")
 
     async def execute_skill(self, skill_name: str, params: dict) -> dict:
@@ -175,17 +171,17 @@ class DiagnosticAgent(BaseAgent):
                 symptoms, vitals, lab_results, imaging_results, patient_history
             )
 
-            # Step 2: Generate differential diagnosis using Claude
-            logger.info("Generating differential diagnosis with Claude API...")
+            # Step 2: Generate differential diagnosis using MedGemma 27B
+            logger.info("Generating differential diagnosis with LLM...")
             diff_dx_prompt = self._build_differential_prompt(clinical_summary)
 
-            response = self.client.messages.create(
-                model="claude-sonnet-4-20250514",
+            response = self.llm_client.chat.completions.create(
+                model=LLM_MODEL,
                 max_tokens=3000,
                 messages=[{"role": "user", "content": diff_dx_prompt}]
             )
 
-            content = response.content[0].text  # type: ignore
+            content = response.choices[0].message.content  # type: ignore
 
             # Step 3: Parse JSON response
             diagnosis_data = self._parse_diagnosis_response(content)
@@ -221,7 +217,7 @@ class DiagnosticAgent(BaseAgent):
             # Log audit trail
             self.log_audit(
                 request=f"differential_dx: {len(symptoms)} symptoms",
-                model="Claude API (claude-sonnet-4-20250514)",
+                model="MedGemma 27B",
                 confidence=overall_confidence,
                 action="flagged_for_review" if requires_review else "processed"
             )
@@ -321,7 +317,7 @@ class DiagnosticAgent(BaseAgent):
             clinical_summary: Formatted clinical summary
 
         Returns:
-            Prompt string for Claude
+            Prompt string for MedGemma 27B
         """
         prompt = f"""You are an expert diagnostician providing differential diagnosis for a clinical case.
 
@@ -477,13 +473,13 @@ Priority levels: "urgent" (STAT/immediate), "routine" (within 24h), "outpatient"
 
 Return ONLY the JSON, no other text."""
 
-            response = self.client.messages.create(
-                model="claude-sonnet-4-20250514",
+            response = self.llm_client.chat.completions.create(
+                model=LLM_MODEL,
                 max_tokens=2000,
                 messages=[{"role": "user", "content": prompt}]
             )
 
-            content = response.content[0].text  # type: ignore
+            content = response.choices[0].message.content  # type: ignore
 
             # Parse response
             test_data = self._parse_test_response(content)
@@ -497,7 +493,7 @@ Return ONLY the JSON, no other text."""
             # Log audit
             self.log_audit(
                 request=f"test_recommendation: {len(differentials)} differentials",
-                model="Claude API",
+                model="MedGemma 27B",
                 confidence=0.85,
                 action=f"recommended_{len(recommended_tests)}_tests"
             )
@@ -684,15 +680,19 @@ You assist with diagnosis — you never make final diagnostic determinations.
 All diagnoses require clinician verification and clinical judgment."""
 
         try:
-            # Stream response from Claude
-            with self.client.messages.stream(
-                model="claude-sonnet-4-20250514",
+            # Stream response from LLM
+            stream = self.llm_client.chat.completions.create(
+                model=LLM_MODEL,
                 max_tokens=2000,
-                system=system_prompt,
-                messages=[{"role": "user", "content": message}]
-            ) as stream:
-                for text in stream.text_stream:
-                    yield text
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": message}
+                ],
+                stream=True,
+            )
+            for chunk in stream:
+                if chunk.choices[0].delta.content:
+                    yield chunk.choices[0].delta.content
 
             # Add disclaimer at the end
             yield f"\n\n---\n{DISCLAIMER}"
@@ -706,18 +706,15 @@ All diagnoses require clinician verification and clinical judgment."""
 _diagnostic_agent: Optional[DiagnosticAgent] = None
 
 
-def init_diagnostic_agent(anthropic_api_key: str) -> DiagnosticAgent:
+def init_diagnostic_agent() -> DiagnosticAgent:
     """
     Initialize the global Diagnostic Agent.
-
-    Args:
-        anthropic_api_key: Anthropic API key
 
     Returns:
         DiagnosticAgent instance
     """
     global _diagnostic_agent
-    _diagnostic_agent = DiagnosticAgent(anthropic_api_key)
+    _diagnostic_agent = DiagnosticAgent()
     return _diagnostic_agent
 
 

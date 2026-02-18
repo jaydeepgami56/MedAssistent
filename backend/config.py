@@ -10,9 +10,9 @@ from typing import Optional
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
-    # Anthropic / Claude API
-    ANTHROPIC_API_KEY: Optional[str] = None
-    CLAUDE_MODEL: str = "claude-sonnet-4-20250514"
+    # LM Studio (OpenAI-compatible local inference)
+    LM_STUDIO_BASE_URL: str = "http://127.0.0.1:1234/v1"
+    LM_STUDIO_MODEL: str = "mistralai/ministral-3-3b"
 
     # Qdrant Vector Database
     QDRANT_HOST: str = "localhost"

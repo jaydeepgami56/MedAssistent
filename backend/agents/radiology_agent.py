@@ -15,7 +15,7 @@ Musculoskeletal X-Ray, and Dermatology.
 import logging
 from typing import AsyncIterator, Union
 from io import BytesIO
-from anthropic import Anthropic
+from backend.llm_client import get_llm_client, LLM_MODEL
 from PIL import Image
 
 from backend.agents.base_agent import BaseAgent
@@ -41,12 +41,9 @@ class RadiologyAgent(BaseAgent):
     Qdrant for KNN search, and MedGemma for report narrative generation.
     """
 
-    def __init__(self, anthropic_api_key: str):
+    def __init__(self):
         """
         Initialize Radiology Agent.
-
-        Args:
-            anthropic_api_key: Anthropic API key for Claude reasoning
         """
         super().__init__(
             agent_id="radiology",
@@ -65,7 +62,7 @@ class RadiologyAgent(BaseAgent):
             queue=0
         )
 
-        self.anthropic_client = Anthropic(api_key=anthropic_api_key)
+        self.llm_client = get_llm_client()
 
     async def execute_skill(self, skill_name: str, params: dict) -> dict:
         """
@@ -679,15 +676,19 @@ Context:
 
 Respond concisely and professionally."""
 
-        # Stream response from Claude
-        with self.anthropic_client.messages.stream(
-            model="claude-sonnet-4-20250514",
+        # Stream response from LLM
+        stream = self.llm_client.chat.completions.create(
+            model=LLM_MODEL,
             max_tokens=1024,
-            system=system_prompt,
-            messages=[{"role": "user", "content": message}]
-        ) as stream:
-            for text in stream.text_stream:
-                yield text
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": message}
+            ],
+            stream=True,
+        )
+        for chunk in stream:
+            if chunk.choices[0].delta.content:
+                yield chunk.choices[0].delta.content
 
         # Yield disclaimer at the end
         yield f"\n\n{DISCLAIMER}"
@@ -697,16 +698,13 @@ Respond concisely and professionally."""
 _radiology_agent = None
 
 
-def init_radiology_agent(anthropic_api_key: str) -> None:
+def init_radiology_agent() -> None:
     """
     Initialize global Radiology Agent.
-
-    Args:
-        anthropic_api_key: Anthropic API key for Claude
     """
     global _radiology_agent
     try:
-        _radiology_agent = RadiologyAgent(anthropic_api_key)
+        _radiology_agent = RadiologyAgent()
         logger.info("Radiology Agent initialized successfully")
     except Exception as e:
         logger.error(f"Failed to initialize Radiology Agent: {e}")
