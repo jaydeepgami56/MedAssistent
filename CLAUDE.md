@@ -1,5 +1,15 @@
 # OpenClaw — MedAssist AI v2.0
 
+## gstack
+Use /browse from gstack for all web browsing. Never use mcp__claude-in-chrome__* tools.
+Available skills: /office-hours, /plan-ceo-review, /plan-eng-review, /plan-design-review,
+/design-consultation, /design-shotgun, /design-html, /review, /ship, /land-and-deploy,
+/canary, /benchmark, /browse, /open-gstack-browser, /qa, /qa-only, /design-review,
+/setup-browser-cookies, /setup-deploy, /setup-gbrain, /retro, /investigate,
+/document-release, /codex, /cso, /autoplan, /pair-agent, /careful, /freeze,
+/guard, /unfreeze, /gstack-upgrade, /learn.
+That's it. Now open Claude Code inside your project directory and all slash commands work.
+
 ## Project Overview
 
 MedAssist AI is a comprehensive medical multi-agent platform built on **OpenClaw** with **A2UI** (Agent-to-User Interface) for intelligent healthcare assistance. It orchestrates 8 specialized AI agents for imaging, triage, clinical decision support, drug interaction, monitoring, documentation, and research—all through a unified, secure, and visually rich interface.

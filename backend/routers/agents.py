@@ -9,7 +9,8 @@ Provides endpoints for:
 """
 
 from fastapi import APIRouter, HTTPException, UploadFile, File
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, FileResponse
+from pathlib import Path
 from pydantic import BaseModel
 from typing import Optional, Any
 import logging
@@ -74,6 +75,10 @@ class ResearchRequest(BaseModel):
 
 
 class GenUIRequest(BaseModel):
+    prompt: str
+
+
+class PPTGenerationRequest(BaseModel):
     prompt: str
 
 
@@ -617,3 +622,104 @@ async def get_genui_status():
         "mcp_enabled": False,  # Future MCP integration
         "capabilities": agent.skills
     }
+
+
+@router.post("/genui/ppt")
+async def genui_generate_ppt(request: PPTGenerationRequest):
+    """
+    Generate a PowerPoint presentation from a natural language prompt.
+
+    Runs the full 6-phase pipeline on the GenUI agent:
+    intent parse → content plan → pptxgenjs codegen → node execution →
+    LibreOffice QA → fix loop → file delivery.
+
+    Args:
+        request: PPTGenerationRequest with prompt string
+
+    Returns:
+        {
+          success: bool, job_id: str, topic: str, slide_count: int,
+          download_url: str, thumbnail_urls: list[str], qa_performed: bool, message: str
+        }
+
+    Raises:
+        HTTPException 400 if prompt is empty
+        HTTPException 503 if GenUI agent unavailable
+        HTTPException 500 if the pipeline fails
+    """
+    if not request.prompt.strip():
+        raise HTTPException(status_code=400, detail="prompt is required")
+
+    agent = get_genui_agent()
+    if not agent:
+        raise HTTPException(status_code=503, detail="GenUI agent not available")
+
+    try:
+        result = await agent.execute_skill("ppt_generation", {"prompt": request.prompt})
+        if not result.get("success"):
+            raise HTTPException(status_code=500, detail=result.get("error", "PPT generation failed"))
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in PPT generation endpoint: {e}")
+        raise HTTPException(status_code=500, detail=f"PPT generation failed: {e}")
+
+
+@router.get("/genui/ppt/download/{job_id}")
+async def genui_ppt_download(job_id: str):
+    """
+    Download the generated .pptx file for a completed PPT job.
+
+    Args:
+        job_id: Identifier returned by POST /agents/genui/ppt
+
+    Returns:
+        FileResponse (.pptx) with attachment Content-Disposition header
+
+    Raises:
+        HTTPException 404 if the job_id is unknown or the file has been cleaned up
+    """
+    from backend.agents.genui_agent import PPT_OUTPUT_BASE
+
+    pptx_path = PPT_OUTPUT_BASE / job_id / "presentation.pptx"
+    if not pptx_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"No presentation found for job '{job_id}'. It may have expired or failed."
+        )
+
+    return FileResponse(
+        path=str(pptx_path),
+        media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        filename="presentation.pptx",
+        headers={"Content-Disposition": "attachment; filename=presentation.pptx"}
+    )
+
+
+@router.get("/genui/ppt/thumbnail/{job_id}/{slide_number}")
+async def genui_ppt_thumbnail(job_id: str, slide_number: int):
+    """
+    Serve a slide thumbnail image (.jpg) for a completed PPT job.
+
+    Args:
+        job_id: Identifier returned by POST /agents/genui/ppt
+        slide_number: 1-based slide index
+
+    Returns:
+        FileResponse (image/jpeg)
+
+    Raises:
+        HTTPException 404 if the thumbnail does not exist (QA tools may be absent)
+    """
+    from backend.agents.genui_agent import PPT_OUTPUT_BASE
+
+    thumb_path = PPT_OUTPUT_BASE / job_id / f"slide-{slide_number}.jpg"
+    if not thumb_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"No thumbnail for slide {slide_number} in job '{job_id}'. "
+                   "Ensure LibreOffice and pdftoppm are installed for slide previews."
+        )
+
+    return FileResponse(path=str(thumb_path), media_type="image/jpeg")

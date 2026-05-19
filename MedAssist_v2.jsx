@@ -1,23 +1,38 @@
-import { useState, useMemo, useCallback, useRef } from "react";
-import * as api from "../services/api";
-import TamboPanel from "../tambo/TamboPanel.jsx";
+import { useState, useMemo, useEffect, useRef } from "react";
 
 /* ─────────────────────────────────────────────
-   MedAssist v2 — full-screen dashboard
-   Design: IBM Plex fonts, warm neutral palette, sidebar navigation
-   Safety: SAFETY-1/2/3, UX-1/2/3/4/5 (see MedAssist_v2.jsx for spec)
+   FEEDBACK APPLIED (from Clinical UX Review)
+   ─────────────────────────────────────────────
+   SAFETY-1  Two-step order signing: "Accept & sign" opens inline confirm
+             panel listing every checked order; separate "Confirm & submit"
+             required. Orders default UN-checked; clinician selects actively.
+   SAFETY-2  Three-tier pharmacy alert severity:
+             • Advisory  → small pill (unchanged)
+             • Warning   → inline callout with amber left-border
+             • Critical Hold → full-width red banner + mandatory acknowledge
+             "Accept & sign" disabled when unacknowledged Critical Holds exist.
+   SAFETY-3  Live data-freshness timestamps: every panel shows "N min ago"
+             relative to a live clock; panels >5 min get a yellow stale border
+             and warning label. Empty/error/pending states added throughout.
+   UX-1      Vitals card shows both SBP and DBP values (not "(SBP)" label).
+   UX-2      AI badge font bumped to 11px; tooltip on hover explains confidence
+             methodology ("model posterior probability against 12,408 cases").
+   UX-3      DDx confidence bars: tooltip explaining what % means.
+   UX-4      Radiology approval requires a confirmation step before persisting.
+   UX-5      Canvas page moved after a separator — visually distinct from
+             active patient-care routes.
    ───────────────────────────────────────────── */
 
 const css = `
   @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Serif:wght@400;500;600&display=swap');
 
-  .ma { --bg:#faf8f4;--surface:#ffffff;--surface-2:#f4f1ea;--ink:#0e1116;--ink-2:#2b3038;--muted:#6b7280;--muted-2:#9aa1ad;--line:#e7e2d6;--line-2:#d8d2c2;--accent:#155e75;--accent-soft:#ecf6f8;--accent-ink:#0c4a5e;--critical:#b91c1c;--critical-soft:#fdecec;--warn:#b45309;--warn-soft:#fdf2e3;--ok:#166534;--ok-soft:#ecf6ed;--info:#1e40af;--info-soft:#eaf0fb;--r:6px;--rl:10px; font-family:'IBM Plex Sans',system-ui,sans-serif;font-size:14px;line-height:1.45;background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased;height:100vh;display:flex;overflow:hidden; }
+  .ma { --bg:#faf8f4;--surface:#ffffff;--surface-2:#f4f1ea;--ink:#0e1116;--ink-2:#2b3038;--muted:#6b7280;--muted-2:#9aa1ad;--line:#e7e2d6;--line-2:#d8d2c2;--accent:#155e75;--accent-soft:#ecf6f8;--accent-ink:#0c4a5e;--critical:#b91c1c;--critical-soft:#fdecec;--warn:#b45309;--warn-soft:#fdf2e3;--ok:#166534;--ok-soft:#ecf6ed;--info:#1e40af;--info-soft:#eaf0fb;--r:6px;--rl:10px; font-family:'IBM Plex Sans',system-ui,sans-serif;font-size:14px;line-height:1.45;background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased;height:620px;display:flex;overflow:hidden; }
   .ma.dark { --bg:#0d1014;--surface:#14181e;--surface-2:#1a1f26;--ink:#f1ede2;--ink-2:#cdd1d8;--muted:#8b929c;--muted-2:#5e6671;--line:#232a32;--line-2:#2c343e;--accent:#67e8f9;--accent-soft:#0d2a30;--accent-ink:#a5f3fc;--critical:#f87171;--critical-soft:#2a1414;--warn:#fbbf24;--warn-soft:#2a2010;--ok:#4ade80;--ok-soft:#11251a;--info:#93c5fd;--info-soft:#11203a; }
   .ma * { box-sizing:border-box; }
   .mono { font-family:'IBM Plex Mono',monospace; }
   .serif { font-family:'IBM Plex Serif',Georgia,serif; }
 
-  /* Sidebar */
+  /* ── Sidebar ── */
   .ma-sb { width:216px;flex-shrink:0;border-right:1px solid var(--line);background:var(--surface);display:flex;flex-direction:column;padding:16px 12px;gap:18px;overflow-y:auto; }
   .ma-brand { display:flex;align-items:center;gap:10px;padding:2px 6px; }
   .ma-mark { width:24px;height:24px;border-radius:5px;background:var(--ink);display:grid;place-items:center;color:var(--bg);font-weight:700;font-size:12px; }
@@ -40,7 +55,7 @@ const css = `
   .pdot { width:6px;height:6px;border-radius:50%;background:currentColor;animation:mapulse 2.4s infinite; }
   @keyframes mapulse { 0%{box-shadow:0 0 0 0 rgba(22,101,52,.4)} 70%{box-shadow:0 0 0 7px rgba(22,101,52,0)} 100%{box-shadow:0 0 0 0 rgba(22,101,52,0)} }
 
-  /* Main */
+  /* ── Main ── */
   .ma-main { display:flex;flex-direction:column;flex:1;min-width:0; }
   .ma-topbar { display:flex;align-items:center;gap:12px;padding:10px 20px;border-bottom:1px solid var(--line);background:var(--surface);flex-shrink:0; }
   .ma-crumbs { font-size:12.5px;color:var(--muted);display:flex;gap:5px;align-items:baseline; }
@@ -52,7 +67,7 @@ const css = `
   .icobtn:hover { background:var(--surface-2); }
   .ma-content { flex:1;min-height:0;overflow-y:auto;background:var(--bg); }
 
-  /* Page head */
+  /* ── Page head ── */
   .ph { padding:20px 26px 14px;display:grid;grid-template-columns:1fr auto;gap:20px;align-items:end;border-bottom:1px solid var(--line); }
   .ph h1 { font-family:'IBM Plex Serif',serif;font-weight:500;font-size:22px;letter-spacing:-0.015em;margin:0 0 3px; }
   .ph-sub { color:var(--muted);font-size:12px;max-width:60ch; }
@@ -63,18 +78,18 @@ const css = `
   .stat .v { font-family:'IBM Plex Mono',monospace;font-size:16px;font-weight:500;color:var(--ink); }
   .stat .v.crit { color:var(--critical); } .stat .v.warn { color:var(--warn); } .stat .v.ok { color:var(--ok); }
 
-  /* Banners */
+  /* ── Banners ── */
   .banner { display:flex;align-items:center;gap:9px;padding:7px 14px;font-size:11.5px;background:var(--warn-soft);color:var(--warn);border-bottom:1px solid var(--line);font-family:'IBM Plex Mono',monospace; }
   .banner.info { background:var(--accent-soft);color:var(--accent-ink); }
   .banner.crit { background:var(--critical-soft);color:var(--critical); }
 
-  /* Freshness */
+  /* ── Freshness indicator ── */
   .fresh { display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-family:'IBM Plex Mono',monospace;padding:2px 6px;border-radius:3px;background:var(--ok-soft);color:var(--ok); }
   .fresh.stale { background:var(--warn-soft);color:var(--warn); }
   .fresh.old { background:var(--critical-soft);color:var(--critical); }
   .stale-panel { border:1.5px solid var(--warn) !important; }
 
-  /* Triage */
+  /* ── Triage queue ── */
   .queue { display:grid;grid-template-columns:1.35fr 1fr;height:100%; }
   .qlist { border-right:1px solid var(--line);overflow-y:auto;background:var(--surface); }
   .qtoolbar { display:flex;align-items:center;gap:7px;padding:9px 14px;border-bottom:1px solid var(--line);background:var(--surface-2);position:sticky;top:0;z-index:2; }
@@ -93,7 +108,7 @@ const css = `
   .pwait { text-align:right;font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--muted); }
   .pwait.over { color:var(--critical); }
 
-  /* Patient detail */
+  /* ── Patient detail ── */
   .det { overflow-y:auto; }
   .det-head { padding:16px 20px;border-bottom:1px solid var(--line);background:var(--surface);display:flex;flex-direction:column;gap:10px; }
   .det-name { font-family:'IBM Plex Serif',serif;font-size:19px;font-weight:500; }
@@ -105,7 +120,7 @@ const css = `
   .det-sec { padding:13px 20px;border-bottom:1px solid var(--line); }
   .det-sec h3 { font-size:10.5px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin:0 0 9px;font-weight:600;display:flex;align-items:center;gap:7px;flex-wrap:wrap; }
 
-  /* AI badge */
+  /* AI badge — bigger, tooltip-enabled */
   .ai-bdg { position:relative;font-family:'IBM Plex Mono',monospace;font-size:11px;padding:2px 6px;border:1px solid var(--accent);color:var(--accent-ink);border-radius:2px;background:var(--accent-soft);cursor:help; }
   .ai-bdg:hover .ai-tip { display:block; }
   .ai-tip { display:none;position:absolute;top:calc(100% + 6px);left:0;width:230px;background:var(--ink);color:var(--bg);font-size:11px;padding:8px 10px;border-radius:5px;line-height:1.5;z-index:99;font-family:'IBM Plex Sans',sans-serif;font-weight:400;letter-spacing:0;text-transform:none;white-space:normal; }
@@ -116,7 +131,7 @@ const css = `
   .bar { height:4px;background:var(--surface-2);border-radius:2px;overflow:hidden; }
   .bar span { display:block;height:100%; }
 
-  /* SAFETY-1: Order signing */
+  /* ── SAFETY-1: Order signing — two-step ── */
   .orders-list { display:flex;flex-direction:column;gap:5px; }
   .order-item { display:flex;align-items:center;gap:9px;padding:7px 9px;border:1px solid var(--line);border-radius:var(--r);background:var(--surface);cursor:pointer;transition:border-color .15s; }
   .order-item:hover { border-color:var(--line-2); }
@@ -151,11 +166,14 @@ const css = `
   .pill.info { background:var(--info-soft);color:var(--info);border-color:var(--info); }
   .pill .d { width:5px;height:5px;border-radius:50%;background:currentColor; }
 
-  /* SAFETY-2: Three-tier pharmacy alerts */
+  /* ── SAFETY-2: Three-tier pharmacy alerts ── */
   .rx-row { padding:10px 14px;border-bottom:1px solid var(--line); }
   .rx-main { display:grid;grid-template-columns:1fr 130px;gap:10px;align-items:center; }
+  /* Advisory: inline pill — same as before */
+  /* Warning: callout box */
   .alert-warn-callout { display:flex;align-items:flex-start;gap:9px;margin-top:8px;padding:8px 10px;border-left:3px solid var(--warn);background:var(--warn-soft);border-radius:0 4px 4px 0; }
   .alert-warn-callout .txt { font-size:12px;color:var(--warn);font-weight:500; }
+  /* Critical hold: full-width banner + acknowledge */
   .alert-crit-hold { margin-top:8px;border:1.5px solid var(--critical);border-radius:var(--r);background:var(--critical-soft);overflow:hidden; }
   .alert-crit-hold .hd { display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--critical);color:#fff; }
   .alert-crit-hold .hd span { font-size:12px;font-weight:600;flex:1; }
@@ -165,7 +183,7 @@ const css = `
   .ack-btn.acked { background:var(--ok-soft);color:var(--ok);border-color:var(--ok); }
   .unack-warning { display:flex;align-items:center;gap:8px;padding:10px 14px;background:var(--critical-soft);border-top:1px solid var(--critical);font-size:12px;color:var(--critical);font-family:'IBM Plex Mono',monospace; }
 
-  /* Agents */
+  /* ── Agents ── */
   .agents-grid { padding:18px 26px;display:grid;grid-template-columns:repeat(3,1fr);gap:12px; }
   .agent-card { border:1px solid var(--line);border-radius:var(--rl);background:var(--surface);padding:14px;display:flex;flex-direction:column;gap:9px;position:relative; }
   .agent-status { display:inline-flex;align-items:center;gap:5px;font-size:10.5px;color:var(--ok); }
@@ -174,7 +192,7 @@ const css = `
   .agent-meta { display:flex;gap:10px;padding-top:8px;border-top:1px dashed var(--line);font-size:11px;color:var(--muted); }
   .agent-meta strong { color:var(--ink);font-weight:500;font-family:'IBM Plex Mono',monospace; }
 
-  /* Radiology */
+  /* ── Radiology ── */
   .rad-grid { padding:18px 26px;display:grid;grid-template-columns:1fr 330px;gap:16px; }
   .rad-viewer { background:var(--surface);border:1px solid var(--line);border-radius:var(--rl);overflow:hidden; }
   .rad-canvas { aspect-ratio:1.1/1;background:#0a0a0a;background-image:radial-gradient(ellipse 60% 50% at 50% 50%,#2a2a2a,#050505 75%);position:relative; }
@@ -198,10 +216,11 @@ const css = `
   .sim-case { aspect-ratio:1;border-radius:4px;background:linear-gradient(135deg,#1a1a1a,#2a2a2a);position:relative;border:1px solid var(--line);overflow:hidden; }
   .sim-case::before { content:"";position:absolute;inset:22%;border-radius:50%/60%;background:radial-gradient(ellipse at 50% 55%,#4a4a4a,#1a1a1a 70%,transparent); }
   .sim-case .lab { position:absolute;bottom:3px;left:3px;font-family:'IBM Plex Mono',monospace;font-size:9px;color:rgba(255,255,255,.7);background:rgba(0,0,0,.5);padding:1px 3px;border-radius:2px; }
+  /* Radiology two-step confirm */
   .rad-confirm { margin-top:10px;border:1.5px solid var(--accent);border-radius:var(--r);background:var(--accent-soft);padding:10px 12px; }
   .rad-confirm p { margin:0 0 8px;font-size:12.5px;color:var(--accent-ink);font-weight:500; }
 
-  /* Vitals */
+  /* ── Vitals ── */
   .vitals-grid { padding:18px 26px;display:grid;grid-template-columns:repeat(2,1fr);gap:14px; }
   .vital-card { background:var(--surface);border:1px solid var(--line);border-radius:var(--rl);padding:16px;position:relative; }
   .vital-card .vlbl { font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted); }
@@ -210,12 +229,13 @@ const css = `
   .vital-card .vtrend { margin-top:12px;height:48px; }
   .vital-card.ok .vval { color:var(--ok); } .vital-card.warn .vval { color:var(--warn); } .vital-card.crit .vval { color:var(--critical); }
   .vital-fresh { position:absolute;top:12px;right:12px; }
+  /* SAFETY-3: stale vitals border */
   .vital-card.stale { border-color:var(--warn);border-width:1.5px; }
 
-  /* Documentation */
+  /* ── Documentation ── */
   .doc-grid { padding:18px 26px;display:grid;grid-template-columns:1fr 270px;gap:16px; }
 
-  /* Canvas */
+  /* ── Canvas ── */
   .canvas-page { display:grid;grid-template-columns:270px 1fr;height:100%; }
   .gen-chat { border-right:1px solid var(--line);background:var(--surface);display:flex;flex-direction:column; }
   .gen-msgs { flex:1;overflow-y:auto;padding:12px 14px;display:flex;flex-direction:column;gap:10px; }
@@ -236,36 +256,16 @@ const css = `
   .cv-card .ch { padding:7px 10px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;font-size:11px;color:var(--muted); }
   .cv-card .cb { padding:12px; }
 
-  /* Slides page */
-  .slides-page { padding:20px 26px;max-width:920px; }
-  .slides-prompt-card { border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:var(--r);background:var(--surface);padding:16px;margin-bottom:16px; }
-  .slides-prompt-card textarea { width:100%;background:var(--bg);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;font:inherit;color:var(--ink);font-size:13px;resize:vertical;min-height:72px;outline:none; }
-  .slides-prompt-card textarea:focus { border-color:var(--accent); }
-  .slides-chips { display:flex;flex-wrap:wrap;gap:5px;margin-top:9px; }
-  .slides-chip { font-size:11.5px;padding:4px 10px;border:1px solid var(--line-2);border-radius:999px;background:var(--bg);color:var(--ink-2);cursor:pointer; }
-  .slides-chip:hover { background:var(--surface-2);border-color:var(--accent); }
-  .slides-ready { border:1px solid var(--ok);border-radius:var(--r);background:var(--ok-soft);padding:12px 16px;display:flex;align-items:center;gap:12px;margin-bottom:16px; }
-  .slides-ready .info { flex:1;color:var(--ok);font-size:13px;font-weight:500; }
-  .slides-ready .sub { color:var(--ok);font-size:11.5px;font-family:'IBM Plex Mono',monospace;margin-top:2px;opacity:.8; }
-  .slides-loading-card { border:1px solid var(--line);border-radius:var(--r);background:var(--surface);padding:16px;margin-bottom:16px;display:flex;align-items:center;gap:14px; }
-  .slides-spinner { width:22px;height:22px;border:2.5px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;flex-shrink:0; }
-  @keyframes spin { to { transform:rotate(360deg); } }
-  .slides-error { border:1px solid var(--critical);border-radius:var(--r);background:var(--critical-soft);padding:12px 16px;color:var(--critical);font-size:12.5px;margin-bottom:16px; }
-  .slides-thumb-grid { display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:8px; }
-  .slides-thumb { border:1px solid var(--line);border-radius:var(--r);background:var(--surface-2);aspect-ratio:16/9;position:relative;overflow:hidden; }
-  .slides-thumb img { width:100%;height:100%;object-fit:cover; }
-  .slides-thumb .snum { position:absolute;bottom:5px;left:5px;font-family:'IBM Plex Mono',monospace;font-size:10px;background:rgba(0,0,0,.55);color:#fff;padding:2px 5px;border-radius:3px; }
-  .slides-thumb-ph { display:grid;place-items:center;color:var(--muted-2);font-size:11px;text-align:center;gap:4px; }
-  .slides-disclaimer { margin-top:14px;padding:9px 12px;background:var(--warn-soft);border:1px solid var(--warn);border-radius:var(--r);display:flex;align-items:flex-start;gap:8px;font-size:11.5px;color:var(--warn); }
-
-  /* Shared */
+  /* Empty / pending states */
   .empty-state { padding:28px 20px;text-align:center;color:var(--muted); }
   .empty-state .ei { width:40px;height:40px;border-radius:50%;border:1px dashed var(--line-2);display:grid;place-items:center;margin:0 auto 10px;color:var(--muted-2); }
   .pending-lbl { display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);font-family:'IBM Plex Mono',monospace;padding:2px 7px;border-radius:3px;border:1px solid var(--line); }
+
+  /* Spark */
   .spark { width:100%;height:100%; }
 `;
 
-/* ─── Mock Data ─── */
+/* ─── Data ─── */
 const PATIENTS = [
   { id:"P-2418", name:"Margaret R.", age:67, sex:"F", esi:1, chief:"Substernal chest pain, dyspnea x 40 min", arrived:"11:42", waited:0, vitals:{hr:118,bp:"98/62",spo2:92,rr:24,temp:37.1}, redFlags:["ST elevation V2-V4","Troponin pending"], status:"resus", dataAge:2 },
   { id:"P-2419", name:"Daniel K.", age:45, sex:"M", esi:2, chief:"Sudden left hemiparesis, slurred speech (FAST+)", arrived:"11:38", waited:4, vitals:{hr:92,bp:"168/104",spo2:97,rr:18,temp:36.8}, redFlags:["LKW < 2h","tPA window"], status:"stroke", dataAge:6 },
@@ -275,7 +275,7 @@ const PATIENTS = [
   { id:"P-2423", name:"Hiroshi T.", age:71, sex:"M", esi:2, chief:"Syncope episode, second this week", arrived:"11:30", waited:12, vitals:{hr:54,bp:"108/68",spo2:96,rr:16,temp:36.7}, redFlags:["Bradycardia"], status:"wait", dataAge:4 },
 ];
 
-const AGENTS_MOCK = [
+const AGENTS = [
   { name:"Triage", color:"var(--critical)", desc:"ESI scoring, red-flag detection, queue routing", caps:["esi_score","red_flag","fast_track"], model:"ClinicalBERT-Lg", calls:"1.2k/d", latency:"240ms" },
   { name:"Diagnostic", color:"var(--accent)", desc:"Differential generation from chief complaint + vitals", caps:["differential","icd10","test_recommend"], model:"MedGemma-27B", calls:"642/d", latency:"1.4s" },
   { name:"Radiology", color:"#0369a1", desc:"X-ray, CT, MRI lesion localization & description", caps:["xray","ct","mri","knn_search"], model:"MedImageInsight", calls:"318/d", latency:"2.1s" },
@@ -284,7 +284,7 @@ const AGENTS_MOCK = [
   { name:"Documentation", color:"#7c3aed", desc:"SOAP notes, discharge summaries from voice + chart", caps:["soap","discharge","billing"], model:"Whisper + Claude", calls:"455/d", latency:"3.2s" },
   { name:"Research", color:"#0891b2", desc:"Literature search, guideline lookup, trial matching", caps:["pubmed","uptodate","trials"], model:"BioBERT-Sage", calls:"210/d", latency:"1.8s" },
   { name:"Coordinator", color:"var(--ink)", desc:"Routes between agents, consensus, safety checks", caps:["routing","consensus","safety"], model:"Claude Opus", calls:"5.4k/d", latency:"120ms" },
-  { name:"GenUI", color:"#9333ea", desc:"On-demand dashboards & forms generated for context", caps:["component_gen","layout","ppt_generation"], model:"Claude Sonnet", calls:"82/d", latency:"4.1s" },
+  { name:"GenUI", color:"#9333ea", desc:"On-demand dashboards & forms generated for context", caps:["component_gen","layout","forms"], model:"Claude Sonnet", calls:"82/d", latency:"4.1s" },
 ];
 
 const DDX = [
@@ -305,7 +305,6 @@ const I = {
   rx:(p)=><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M6 4h6a4 4 0 0 1 0 8H6V4z"/><path d="M6 12l8 8M11 14l4 4"/></svg>,
   research:(p)=><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" {...p}><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>,
   canvas:(p)=><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" {...p}><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 3v18"/></svg>,
-  slides:(p)=><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" {...p}><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>,
   search:(p)=><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" {...p}><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>,
   bell:(p)=><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M6 16V11a6 6 0 1 1 12 0v5l1 2H5l1-2z"/><path d="M10 20a2 2 0 0 0 4 0"/></svg>,
   sun:(p)=><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" {...p}><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5 19 19M5 19l1.5-1.5M17.5 6.5 19 5"/></svg>,
@@ -318,7 +317,6 @@ const I = {
   clock:(p)=><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" {...p}><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>,
   x:(p)=><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M18 6 6 18M6 6l12 12"/></svg>,
   shield:(p)=><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>,
-  download:(p)=><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>,
 };
 
 /* ─── Helpers ─── */
@@ -335,9 +333,10 @@ function Spark({ data, color="var(--accent)" }) {
   );
 }
 
+/* SAFETY-3: freshness badge */
 function FreshBadge({ ageMin }) {
   const cls = ageMin <= 5 ? "" : ageMin <= 15 ? " stale" : " old";
-  const label = ageMin <= 5 ? `${ageMin}m ago` : ageMin <= 15 ? `${ageMin}m ago ⚠` : `${ageMin}m — STALE`;
+  const label = ageMin <= 5 ? `${ageMin}m ago ✓` : ageMin <= 15 ? `${ageMin}m ago ⚠` : `${ageMin}m ago — STALE`;
   return <span className={`fresh${cls}`}><I.clock style={{width:10,height:10}}/> {label}</span>;
 }
 
@@ -367,17 +366,13 @@ function Sidebar({ route, setRoute }) {
             {it.badge&&<span className="bdg">{it.badge}</span>}
           </div>
         ))}
+        {/* UX-5: Canvas separated from clinical routes */}
         <div className="ma-nav-sep"/>
         <div className="ma-nav-lbl">Tools</div>
         <div className={"ma-ni"+(route==="canvas"?" active":"")} onClick={()=>setRoute("canvas")}>
           <I.canvas className="ico" style={{width:13,height:13}}/>
           <span>Canvas</span>
           <span className="bdg">GenUI</span>
-        </div>
-        <div className={"ma-ni"+(route==="slides"?" active":"")} onClick={()=>setRoute("slides")}>
-          <I.slides className="ico" style={{width:13,height:13}}/>
-          <span>Slides</span>
-          <span className="bdg">PPT</span>
         </div>
       </div>
       <div className="ma-ctx">
@@ -395,17 +390,7 @@ function Sidebar({ route, setRoute }) {
 
 /* ─── Topbar ─── */
 function Topbar({ route, dark, setDark }) {
-  const L = {
-    triage:["Clinical","Triage queue"],
-    agents:["System","Agent control"],
-    radiology:["Clinical","Radiology read"],
-    vitals:["Clinical","Vitals monitor"],
-    documentation:["Clinical","Documentation"],
-    pharmacy:["Clinical","Pharmacy review"],
-    research:["Clinical","Research & evidence"],
-    canvas:["Tools","GenUI canvas"],
-    slides:["Tools","Slide deck generator"],
-  }[route]||["",""];
+  const L = { triage:["Clinical","Triage queue"], agents:["System","Agent control"], radiology:["Clinical","Radiology read"], vitals:["Clinical","Vitals monitor"], documentation:["Clinical","Documentation"], pharmacy:["Clinical","Pharmacy review"], research:["Clinical","Research & evidence"], canvas:["Tools","GenUI canvas"] }[route]||["",""];
   return (
     <div className="ma-topbar">
       <div className="ma-crumbs">{L[0]} <span style={{color:"var(--muted-2)"}}>/</span> <strong>{L[1]}</strong></div>
@@ -476,6 +461,7 @@ function TriagePage() {
 
 /* SAFETY-1 + UX-2 + UX-3 */
 function PatientDetail({ patient }) {
+  /* Orders: all unchecked by default — clinician selects actively */
   const ORDERS = [
     { id:"ecg", lab:"12-lead ECG", stat:true, why:"rule out STEMI" },
     { id:"trop", lab:"Troponin I (high-sens)", stat:true, why:"ACS evaluation" },
@@ -484,9 +470,10 @@ function PatientDetail({ patient }) {
     { id:"asa", lab:"ASA 325 mg PO chewed", stat:true, why:"ACS pathway" },
   ];
   const [checked,setChecked]=useState({});
-  const [step,setStep]=useState("idle");
+  const [step,setStep]=useState("idle"); // idle | confirm | signed
   const toggle=id=>setChecked(c=>({...c,[id]:!c[id]}));
   const selectedOrders=ORDERS.filter(o=>checked[o.id]);
+
   return (
     <div className="det">
       <div className="det-head">
@@ -497,18 +484,23 @@ function PatientDetail({ patient }) {
           </div>
           <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:5}}>
             <span className={"epill ep"+patient.esi} style={{fontSize:12,padding:"3px 8px"}}>ESI-{patient.esi}</span>
+            {/* SAFETY-3: per-patient data freshness */}
             <FreshBadge ageMin={patient.dataAge}/>
           </div>
         </div>
         <div className="det-grid">
+          {/* UX-1: Show both SBP and DBP, no redundant "(SBP)" label */}
           <div className="kv"><div className="k">HR</div><div className={"v"+(patient.vitals.hr>110?" warn":"")}>{patient.vitals.hr} bpm</div></div>
           <div className="kv"><div className="k">BP</div><div className={"v"+(parseInt(patient.vitals.bp)<100?" crit":"")}>{patient.vitals.bp} mmHg</div></div>
           <div className="kv"><div className="k">SpO₂</div><div className={"v"+(patient.vitals.spo2<94?" warn":"")}>{patient.vitals.spo2}%</div></div>
           <div className="kv"><div className="k">Temp · RR</div><div className={"v"+(patient.vitals.temp>38.5?" warn":"")}>{patient.vitals.temp}°C · {patient.vitals.rr}/min</div></div>
         </div>
       </div>
+
       <div className="det-sec"><h3>Chief complaint</h3><div style={{fontSize:13.5}}>{patient.chief}</div></div>
+
       <div className="det-sec">
+        {/* UX-2: AI badge bigger + tooltip explaining confidence */}
         <h3>
           Differential diagnosis
           <span className="ai-bdg">
@@ -519,16 +511,19 @@ function PatientDetail({ patient }) {
         <div className="ddx">
           {DDX.map(d=>(
             <div key={d.code} className="ddx-row">
+              {/* UX-3: tooltip on confidence bar */}
               <div style={{fontSize:13}}>{d.name} <code style={{fontFamily:"monospace",fontSize:10.5,color:"var(--muted)"}}>{d.code}</code></div>
-              <div title={`${(d.confidence*100).toFixed(0)}% — model posterior probability. Values >70% primary hypothesis; 30–70% rule-out candidates; <30% low-probability.`} style={{cursor:"help"}}>
+              <div title={`${(d.confidence*100).toFixed(0)}% — model posterior probability. Values >70% indicate primary hypothesis; 30–70% rule-out candidates; <30% low-probability.`} style={{cursor:"help"}}>
                 <div className="bar"><span style={{width:`${d.confidence*100}%`,background:d.confidence>.7?"var(--critical)":d.confidence>.3?"var(--warn)":"var(--accent)"}}/></div>
               </div>
               <div style={{fontFamily:"monospace",fontSize:12,textAlign:"right"}}>{(d.confidence*100).toFixed(0)}%</div>
             </div>
           ))}
         </div>
-        <div style={{fontSize:11,color:"var(--muted)",marginTop:8,fontFamily:"monospace"}}>Generated 11:42:08 · 6 features · 1.4s · n=12,408 · hover bars for methodology</div>
+        <div style={{fontSize:11,color:"var(--muted)",marginTop:8,fontFamily:"monospace"}}>Generated 11:42:08 · 6 features · 1.4s · n=12,408 cases · hover bars for methodology</div>
       </div>
+
+      {/* SAFETY-1: Orders unchecked by default */}
       <div className="det-sec">
         <h3>
           Recommended orders
@@ -538,7 +533,7 @@ function PatientDetail({ patient }) {
         <div className="orders-list">
           {ORDERS.map(o=>(
             <label key={o.id} className="order-item" onClick={()=>toggle(o.id)}>
-              <input type="checkbox" checked={!!checked[o.id]} onChange={()=>toggle(o.id)}/>
+              <input type="checkbox" checked={!!checked[o.id]} onChange={()=>toggle(o.id)} style={{accentColor:"var(--accent)"}}/>
               <span style={{fontSize:13,fontWeight:o.stat?500:400}}>{o.lab}</span>
               <span style={{fontSize:11,color:"var(--muted)",marginLeft:"auto"}}>{o.why}</span>
               {o.stat&&<span className="pill" style={{fontSize:9.5,background:"var(--warn-soft)",color:"var(--warn)",borderColor:"var(--warn)"}}>STAT</span>}
@@ -547,6 +542,8 @@ function PatientDetail({ patient }) {
         </div>
         {selectedOrders.length===0&&<div style={{marginTop:8,fontSize:11.5,color:"var(--muted)"}}>No orders selected. Check items above to include in sign.</div>}
       </div>
+
+      {/* SAFETY-1: Two-step confirm flow */}
       {step==="idle"&&(
         <div className="act-bar">
           <button className="btn primary" disabled={selectedOrders.length===0} onClick={()=>setStep("confirm")}>
@@ -603,7 +600,7 @@ function AgentsPage() {
         </div>
       </div>
       <div className="agents-grid">
-        {AGENTS_MOCK.map(a=>(
+        {AGENTS.map(a=>(
           <div key={a.name} className="agent-card">
             <div style={{position:"absolute",top:0,left:0,width:3,height:"100%",background:a.color,borderRadius:"10px 0 0 10px"}}/>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10}}>
@@ -628,7 +625,7 @@ function AgentsPage() {
 
 /* ─── Radiology — UX-4: two-step approval ─── */
 function RadiologyPage() {
-  const [step,setStep]=useState("idle");
+  const [step,setStep]=useState("idle"); // idle | confirm | signed | flagged
   return (
     <>
       <div className="banner info"><I.alert style={{width:13,height:13}}/><span><strong>AI-ASSISTED READ</strong> — Findings are advisory only. Board-certified radiologist must sign final report. AI accuracy 91.3% (n=4,208 PA chest XR vs attending reads).</span></div>
@@ -676,6 +673,8 @@ function RadiologyPage() {
             <div className="panel-h"><h4>AI impression</h4></div>
             <div className="panel-b">
               <p className="serif" style={{margin:0,fontSize:13,lineHeight:1.55}}>Bilateral lower-lobe infiltrates with mild cardiomegaly. Differential includes CAP vs cardiogenic edema. Recommend BNP, troponin correlation; CT if worsening.</p>
+
+              {/* UX-4: Two-step radiology approval */}
               {step==="idle"&&(
                 <div style={{display:"flex",gap:6,marginTop:12}}>
                   <button className="btn sm primary" onClick={()=>setStep("confirm")}><I.check style={{width:12,height:12}}/> Approve & sign</button>
@@ -701,14 +700,14 @@ function RadiologyPage() {
   );
 }
 
-/* ─── Vitals — SAFETY-3 ─── */
+/* ─── Vitals — SAFETY-3: freshness per card ─── */
 function VitalsPage() {
   const hr=[82,84,86,90,94,98,102,108,112,118,116,118];
   const bp=[128,126,122,118,114,108,104,100,98,98,96,98];
   const spo2=[98,98,97,97,96,95,94,93,92,92,93,92];
   const rr=[16,16,18,18,20,20,22,22,24,24,24,24];
   const cards=[
-    {label:"Heart rate",val:"118",unit:"bpm",tag:"Tachycardia",cls:"warn",data:hr,color:"var(--warn)",age:2},
+    {label:"Heart rate",val:"118",unit:"bpm",tag:"Tachycardia",cls:"warn",data:hr,color:"var(--warn)",dbp:null,age:2},
     {label:"Blood pressure",val:"98 / 62",unit:"mmHg",tag:"Hypotension",cls:"crit",data:bp,color:"var(--critical)",age:2},
     {label:"SpO₂",val:"92",unit:"%",tag:"Hypoxia",cls:"warn",data:spo2,color:"var(--warn)",age:2},
     {label:"Respiratory rate",val:"24",unit:"/min",tag:"Tachypnea",cls:"warn",data:rr,color:"var(--warn)",age:18},
@@ -728,6 +727,7 @@ function VitalsPage() {
           <div key={v.label} className={"vital-card "+v.cls+(v.age>15?" stale":"")}>
             <div className="vital-fresh"><FreshBadge ageMin={v.age}/></div>
             <div className="vlbl">{v.label}</div>
+            {/* UX-1: BP shows both SBP and DBP naturally */}
             <div className="vval">{v.val}<span className="vunit">{v.unit}</span></div>
             <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"var(--muted)",marginTop:5}}>
               <span>MEWS contributing</span>
@@ -791,7 +791,7 @@ function DocumentationPage() {
   );
 }
 
-/* ─── Pharmacy — SAFETY-2 ─── */
+/* ─── Pharmacy — SAFETY-2: three-tier alert severity ─── */
 function PharmacyPage() {
   const [acked,setAcked]=useState({});
   const meds=[
@@ -836,12 +836,15 @@ function PharmacyPage() {
                   {m.tier===null&&<span className="pill ok"><span className="d"/>No alerts</span>}
                 </div>
               </div>
+              {/* Advisory: pill (if we had one — none in this data) */}
+              {/* Warning: callout with left amber border */}
               {m.tier==="warning"&&(
                 <div className="alert-warn-callout">
                   <I.alert style={{width:13,height:13,color:"var(--warn)",flexShrink:0,marginTop:1}}/>
                   <div className="txt">{m.alert}</div>
                 </div>
               )}
+              {/* Critical Hold: full banner + mandatory acknowledge */}
               {m.tier==="critical"&&(
                 <div className="alert-crit-hold">
                   <div className="hd">
@@ -859,6 +862,7 @@ function PharmacyPage() {
               )}
             </div>
           ))}
+          {/* Warning if unacknowledged critical holds remain */}
           {criticalUnacked.length>0&&(
             <div className="unack-warning">
               <I.shield style={{width:13,height:13}}/>
@@ -902,32 +906,17 @@ function ResearchPage() {
   );
 }
 
-/* ─── Canvas — GenUI agent wired to backend ─── */
+/* ─── Canvas — UX-5: under "Tools" separator ─── */
 function CanvasPage() {
   const [msgs,setMsgs]=useState([{from:"bot",text:"GenUI canvas — describe a component and I'll generate it for the canvas. This workspace is for building custom views, not active patient care."}]);
   const [draft,setDraft]=useState("");
   const [cards,setCards]=useState([]);
-  const [pending,setPending]=useState(false);
   const sugg=["Patient vitals card","Medication reconciliation form","Discharge checklist","Sepsis screening"];
-
-  const generate=useCallback(async(prompt)=>{
-    const p=prompt||draft.trim();
-    if(!p||pending)return;
+  const generate=(prompt)=>{
+    setMsgs(m=>[...m,{from:"user",text:prompt},{from:"bot",text:`Generating "${prompt}"… ready in canvas.`}]);
     setDraft("");
-    setPending(true);
-    setMsgs(m=>[...m,{from:"user",text:p}]);
-    try {
-      const result=await api.generateUI(p);
-      const label=result?.component_type||p;
-      setMsgs(m=>[...m,{from:"bot",text:`Generated: "${label}"`}]);
-      setCards(c=>[...c,{id:Date.now(),title:p,spec:result}]);
-    } catch(err) {
-      setMsgs(m=>[...m,{from:"bot",text:`Error: ${err.message}`}]);
-    } finally {
-      setPending(false);
-    }
-  },[draft,pending]);
-
+    setCards(c=>[...c,{id:Date.now(),title:prompt,kind:c.length%3}]);
+  };
   return (
     <div className="canvas-page">
       <div className="gen-chat">
@@ -944,8 +933,8 @@ function CanvasPage() {
         <div className="gen-foot">
           <div className="suggs">{sugg.map(s=><span key={s} className="sugg" onClick={()=>generate(s)}>{s}</span>)}</div>
           <div className="gen-input">
-            <input value={draft} onChange={e=>setDraft(e.target.value)} placeholder="Describe a component…" disabled={pending} onKeyDown={e=>{if(e.key==="Enter"&&draft.trim())generate();}}/>
-            <button onClick={()=>generate()} disabled={pending}><I.send style={{width:13,height:13}}/></button>
+            <input value={draft} onChange={e=>setDraft(e.target.value)} placeholder="Describe a component…" onKeyDown={e=>{if(e.key==="Enter"&&draft.trim())generate(draft.trim());}}/>
+            <button onClick={()=>{if(draft.trim())generate(draft.trim());}}><I.send style={{width:13,height:13}}/></button>
           </div>
         </div>
       </div>
@@ -955,7 +944,7 @@ function CanvasPage() {
             <div>
               <div style={{width:44,height:44,borderRadius:"50%",background:"var(--surface)",border:"1px dashed var(--line-2)",display:"grid",placeItems:"center",color:"var(--muted-2)",margin:"0 auto 10px"}}><I.plus style={{width:16,height:16}}/></div>
               <div style={{fontSize:14,color:"var(--ink)"}}>Empty canvas</div>
-              <div style={{marginTop:3,fontSize:12.5}}>Pick a suggestion or describe a component.</div>
+              <div style={{marginTop:3,fontSize:12.5}}>Pick a suggestion or type to generate.</div>
             </div>
           </div>
         ):(
@@ -964,20 +953,9 @@ function CanvasPage() {
               <div key={c.id} className="cv-card">
                 <div className="ch"><span className="mono">#{c.id.toString().slice(-4)}</span><span style={{fontSize:12}}>{c.title}</span></div>
                 <div className="cb">
-                  {c.spec?.component_type==="vitals_dashboard"&&(
-                    <><div style={{fontSize:10.5,color:"var(--muted)",textTransform:"uppercase",letterSpacing:".08em"}}>Vitals</div>
-                    <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:10,marginTop:8}}>{[["HR","—"],["BP","—"],["SpO₂","—"],["RR","—"]].map(([k,v])=><div key={k}><div style={{fontSize:10.5,color:"var(--muted)"}}>{k}</div><div className="mono" style={{fontSize:20}}>{v}</div></div>)}</div></>
-                  )}
-                  {c.spec?.component_type==="form"&&(
-                    <><div style={{fontSize:10.5,color:"var(--muted)",textTransform:"uppercase",letterSpacing:".08em",marginBottom:7}}>Form</div>
-                    {(c.spec?.fields||["Field 1","Field 2","Field 3"]).slice(0,4).map(l=><div key={l} style={{marginBottom:7}}><div style={{fontSize:10.5,color:"var(--muted)"}}>{typeof l==="string"?l:l.label}</div><div style={{height:26,border:"1px solid var(--line)",borderRadius:4,background:"var(--bg)"}}/></div>)}</>
-                  )}
-                  {!c.spec?.component_type&&(
-                    <div style={{fontSize:12,color:"var(--muted)",fontStyle:"italic"}}>Component: {c.title}</div>
-                  )}
-                  {c.spec&&c.spec.component_type&&c.spec.component_type!=="vitals_dashboard"&&c.spec.component_type!=="form"&&(
-                    <div style={{fontSize:12,color:"var(--muted)",fontStyle:"italic"}}>{c.spec.component_type}</div>
-                  )}
+                  {c.kind===0&&<><div style={{fontSize:10.5,color:"var(--muted)",textTransform:"uppercase",letterSpacing:".08em"}}>Vitals</div><div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:10,marginTop:8}}>{[["HR","118"],["BP","98/62"],["SpO₂","92%"],["RR","24"]].map(([k,v])=><div key={k}><div style={{fontSize:10.5,color:"var(--muted)"}}>{k}</div><div className="mono" style={{fontSize:20}}>{v}</div></div>)}</div></>}
+                  {c.kind===1&&<><div style={{fontSize:10.5,color:"var(--muted)",textTransform:"uppercase",letterSpacing:".08em",marginBottom:7}}>Form</div>{["Drug name","Dose","Route","Frequency"].map(l=><div key={l} style={{marginBottom:7}}><div style={{fontSize:10.5,color:"var(--muted)"}}>{l}</div><div style={{height:26,border:"1px solid var(--line)",borderRadius:4,background:"var(--bg)"}}/></div>)}</>}
+                  {c.kind===2&&<><div style={{fontSize:10.5,color:"var(--muted)",textTransform:"uppercase",letterSpacing:".08em",marginBottom:7}}>Checklist</div>{["Vitals stable","Pain controlled","Discharge instructions","Follow-up scheduled"].map((l,i)=><label key={l} style={{display:"flex",alignItems:"center",gap:7,padding:"5px 0",fontSize:12.5}}><input type="checkbox" defaultChecked={i<2}/>{l}</label>)}</>}
                 </div>
               </div>
             ))}
@@ -988,189 +966,11 @@ function CanvasPage() {
   );
 }
 
-/* ─── Slides — PPT generation via GenUI agent ─── */
-const SLIDES_CHIPS = [
-  "Antibiotic stewardship overview",
-  "Hand hygiene protocols",
-  "Sepsis recognition & treatment",
-  "Patient fall prevention",
-];
-
-function SlidesPage() {
-  const [prompt,setPrompt]=useState("");
-  const [result,setResult]=useState(null);
-  const [loading,setLoading]=useState(false);
-  const [error,setError]=useState(null);
-  const inputRef=useRef(null);
-
-  const generate=useCallback(async()=>{
-    if(!prompt.trim()||loading)return;
-    setLoading(true);
-    setError(null);
-    setResult(null);
-    try {
-      const r=await api.generatePPT(prompt);
-      setResult(r);
-    } catch(err) {
-      setError(err.message||"PPT generation failed. Check that the ppt-worker container is running.");
-    } finally {
-      setLoading(false);
-    }
-  },[prompt,loading]);
-
-  const thumbnailCount=result?.thumbnail_urls?.length||0;
-
-  return (
-    <>
-      <div className="banner info"><I.slides style={{width:13,height:13}}/><span><strong>AI-GENERATED SLIDES</strong> — GenUI agent · pptxgenjs · Powered by LM Studio local inference. Review all content before use in clinical settings.</span></div>
-      <div className="ph">
-        <div>
-          <h1>Slide deck generator</h1>
-          <div className="ph-sub">GenUI agent · pptxgenjs · Describe a presentation and receive a downloadable .pptx with up to 20 slides.</div>
-        </div>
-        {result&&(
-          <div className="stat-row">
-            <div className="stat"><div className="k">Slides</div><div className="v ok">{result.slide_count||"—"}</div></div>
-            <div className="stat"><div className="k">Previews</div><div className="v">{thumbnailCount}</div></div>
-            <div className="stat"><div className="k">Status</div><div className="v ok">Ready</div></div>
-          </div>
-        )}
-      </div>
-      <div className="slides-page">
-        {/* Prompt card */}
-        <div className="slides-prompt-card">
-          <textarea
-            ref={inputRef}
-            value={prompt}
-            onChange={e=>setPrompt(e.target.value)}
-            placeholder="Describe the presentation… e.g. '6-slide overview of antibiotic stewardship for ED nursing staff'"
-            onKeyDown={e=>{if(e.key==="Enter"&&e.ctrlKey)generate();}}
-          />
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:10,gap:10}}>
-            <div className="slides-chips">
-              {SLIDES_CHIPS.map(c=>(
-                <button key={c} className="slides-chip" onClick={()=>setPrompt(c)}>{c}</button>
-              ))}
-            </div>
-            <button
-              className="btn primary"
-              disabled={!prompt.trim()||loading}
-              onClick={generate}
-              style={{flexShrink:0,whiteSpace:"nowrap"}}
-            >
-              {loading?"Generating…":"Generate slides"}
-            </button>
-          </div>
-          <div style={{marginTop:8,fontSize:11,color:"var(--muted)",fontFamily:"monospace"}}>Ctrl+Enter to generate · Max 20 slides · Requires Node.js + ppt-worker container</div>
-        </div>
-
-        {/* Loading */}
-        {loading&&(
-          <div className="slides-loading-card">
-            <div className="slides-spinner"/>
-            <div>
-              <div style={{fontWeight:500,fontSize:13}}>Generating presentation…</div>
-              <div style={{color:"var(--muted)",fontSize:12,marginTop:3,fontFamily:"monospace"}}>Planning slides → generating pptxgenjs code → building .pptx → rendering previews</div>
-            </div>
-          </div>
-        )}
-
-        {/* Error */}
-        {error&&!loading&&(
-          <div className="slides-error">
-            <strong>Generation failed</strong> — {error}
-          </div>
-        )}
-
-        {/* Result */}
-        {result&&!loading&&(
-          <>
-            <div className="slides-ready">
-              <I.check style={{width:18,height:18,flexShrink:0}}/>
-              <div>
-                <div className="info">{result.slide_count} slides ready{result.topic?` · ${result.topic}`:""}</div>
-                <div className="sub">job {result.job_id?.slice(0,8)}…{result.qa_passed?" · QA passed":""}</div>
-              </div>
-              <a
-                href={api.getPPTDownloadURL(result.download_url)}
-                download="presentation.pptx"
-                className="btn primary"
-                style={{textDecoration:"none",flexShrink:0}}
-              >
-                <I.download style={{width:13,height:13}}/> Download .pptx
-              </a>
-            </div>
-
-            {thumbnailCount>0?(
-              <>
-                <div style={{fontSize:11,color:"var(--muted)",textTransform:"uppercase",letterSpacing:".08em",marginBottom:8,fontWeight:600}}>
-                  Slide preview ({thumbnailCount} slides)
-                </div>
-                <div className="slides-thumb-grid">
-                  {result.thumbnail_urls.map((url,i)=>(
-                    <div key={i} className="slides-thumb">
-                      <img src={api.getPPTThumbnailURL(url)} alt={`Slide ${i+1}`}/>
-                      <span className="snum">{i+1}</span>
-                    </div>
-                  ))}
-                </div>
-              </>
-            ):(
-              <>
-                <div style={{fontSize:11,color:"var(--muted)",textTransform:"uppercase",letterSpacing:".08em",marginBottom:8,fontWeight:600}}>
-                  Slide preview (unavailable — install LibreOffice + pdftoppm for thumbnails)
-                </div>
-                <div className="slides-thumb-grid">
-                  {Array.from({length:Math.min(result.slide_count||3,6)}).map((_,i)=>(
-                    <div key={i} className="slides-thumb">
-                      <div className="slides-thumb-ph">
-                        <I.slides style={{width:20,height:20}}/>
-                        <span>Slide {i+1}</span>
-                      </div>
-                      <span className="snum">{i+1}</span>
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
-
-            <div className="slides-disclaimer">
-              <I.alert style={{width:14,height:14,flexShrink:0,marginTop:1}}/>
-              <span>AI-generated content — review all slides for clinical accuracy before use in patient education, grand rounds, or any clinical setting. Content does not constitute medical advice.</span>
-            </div>
-          </>
-        )}
-
-        {/* Empty state */}
-        {!result&&!loading&&!error&&(
-          <div className="empty-state" style={{paddingTop:40}}>
-            <div className="ei"><I.slides style={{width:18,height:18}}/></div>
-            <div style={{fontSize:14,color:"var(--ink)"}}>No presentation yet</div>
-            <div style={{marginTop:5,fontSize:12.5}}>Describe the content above and click Generate slides.</div>
-          </div>
-        )}
-      </div>
-    </>
-  );
-}
-
 /* ─── Root ─── */
-export default function MedAssistDashboard() {
+export default function MedAssist() {
   const [route,setRoute]=useState("triage");
   const [dark,setDark]=useState(false);
-
-  const pages={
-    triage:<TriagePage/>,
-    agents:<AgentsPage/>,
-    radiology:<RadiologyPage/>,
-    vitals:<VitalsPage/>,
-    documentation:<DocumentationPage/>,
-    pharmacy:<PharmacyPage/>,
-    research:<ResearchPage/>,
-    canvas:<CanvasPage/>,
-    slides:<SlidesPage/>,
-  };
-
+  const pages={triage:<TriagePage/>,agents:<AgentsPage/>,radiology:<RadiologyPage/>,vitals:<VitalsPage/>,documentation:<DocumentationPage/>,pharmacy:<PharmacyPage/>,research:<ResearchPage/>,canvas:<CanvasPage/>};
   return (
     <>
       <style>{css}</style>
@@ -1181,7 +981,6 @@ export default function MedAssistDashboard() {
           <div className="ma-content" key={route}>{pages[route]}</div>
         </div>
       </div>
-      <TamboPanel/>
     </>
   );
 }

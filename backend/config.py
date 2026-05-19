@@ -12,7 +12,7 @@ class Settings(BaseSettings):
 
     # LM Studio (OpenAI-compatible local inference)
     LM_STUDIO_BASE_URL: str = "http://127.0.0.1:1234/v1"
-    LM_STUDIO_MODEL: str = "mistralai/ministral-3-3b"
+    LM_STUDIO_MODEL: str = "mistralai/mistral-nemo-instruct-2407"
 
     # Qdrant Vector Database
     QDRANT_HOST: str = "localhost"
@@ -48,6 +48,12 @@ class Settings(BaseSettings):
 
     # Model Directories
     MEDIMAGEINSIGHT_MODEL_DIR: Optional[str] = None
+
+    # PPT Worker container (Ubuntu 24 with Node.js, LibreOffice, pdftoppm)
+    PPT_WORKER_URL: str = "http://localhost:8001"
+    # Shared bind-mount path where ppt-worker writes outputs (host path)
+    # Must match the left side of the docker-compose volume: ../ppt_outputs:/ppt_outputs
+    PPT_WORKER_OUTPUTS_PATH: str = "ppt_outputs"
 
     # Encryption (for HIPAA compliance in production)
     ENCRYPTION_KEY: Optional[str] = None

@@ -67,6 +67,25 @@ services:
       retries: 5
     restart: unless-stopped
 
+  # PPT Worker — Ubuntu 24 container with Node.js, LibreOffice, pdftoppm
+  # Executes AI-generated pptxgenjs code and produces .pptx + slide thumbnails.
+  # Output files are written to the shared bind-mount ../ppt_outputs (host: openclaw/ppt_outputs)
+  # so the FastAPI backend can serve downloads directly from the host path.
+  ppt-worker:
+    build:
+      context: ./ppt-worker
+    container_name: medassist-ppt-worker
+    ports:
+      - "8001:8001"          # accessible from host at http://localhost:8001
+    volumes:
+      - ../ppt_outputs:/ppt_outputs   # shared bind-mount: host openclaw/ppt_outputs ↔ container /ppt_outputs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
 volumes:
   pgdata:
     driver: local

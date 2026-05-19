@@ -275,7 +275,7 @@ export const tamboComponents = [
       title: z.string().describe("Table title"),
       description: z.string().optional().describe("Brief subtitle"),
       columns: z.array(columnSchema).describe("Table column definitions"),
-      rows: z.array(z.record(z.string())).describe("Array of row objects with keys matching columns"),
+      rows: z.array(z.object({}).passthrough()).describe("Array of row objects with keys matching columns"),
       accentColor: z.string().optional().describe("Accent hex color"),
     }),
   },

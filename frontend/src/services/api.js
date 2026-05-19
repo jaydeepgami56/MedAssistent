@@ -285,6 +285,75 @@ export async function getGenUIStatus() {
 }
 
 /**
+ * Generate a PowerPoint presentation from a natural language prompt.
+ *
+ * Calls the GenUI agent's ppt_generation skill via the 6-phase backend pipeline
+ * (intent parse → content plan → pptxgenjs codegen → node execution → QA → delivery).
+ * Generation typically takes 30-120 seconds; no timeout is set on the client side.
+ *
+ * @param {string} prompt - Natural language description of the desired presentation
+ * @returns {Promise<{
+ *   success: boolean,
+ *   job_id: string,
+ *   topic: string,
+ *   slide_count: number,
+ *   download_url: string,
+ *   thumbnail_urls: string[],
+ *   qa_performed: boolean,
+ *   message: string
+ * }>}
+ * @throws {Error} On empty prompt, HTTP error, or network failure
+ */
+export async function generatePPT(prompt) {
+  if (!prompt || !prompt.trim()) {
+    throw new Error("Prompt is required to generate a presentation");
+  }
+
+  const url = `${API_BASE_URL}/agents/genui/ppt`;
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt: prompt.trim() }),
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ detail: response.statusText }));
+      throw new Error(err.detail || `HTTP ${response.status}: PPT generation failed`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    if (error.message.includes("Failed to fetch") || error.message.includes("NetworkError")) {
+      throw new Error(`Backend unreachable at ${API_BASE_URL}. Ensure the server is running.`);
+    }
+    throw error;
+  }
+}
+
+/**
+ * Build the absolute download URL for a generated .pptx file.
+ *
+ * @param {string} downloadUrl - Relative path returned by generatePPT() (e.g. "/agents/genui/ppt/download/<job_id>")
+ * @returns {string|null} Absolute URL suitable for an <a href> download link
+ */
+export function getPPTDownloadURL(downloadUrl) {
+  if (!downloadUrl) return null;
+  return `${API_BASE_URL}${downloadUrl}`;
+}
+
+/**
+ * Build the absolute URL for a slide thumbnail image.
+ *
+ * @param {string} thumbnailUrl - Relative path from thumbnail_urls[] (e.g. "/agents/genui/ppt/thumbnail/<job_id>/1")
+ * @returns {string|null} Absolute URL suitable for an <img src>
+ */
+export function getPPTThumbnailURL(thumbnailUrl) {
+  if (!thumbnailUrl) return null;
+  return `${API_BASE_URL}${thumbnailUrl}`;
+}
+
+/**
  * Health check endpoint
  * @returns {Promise<Object>} Health status
  */
